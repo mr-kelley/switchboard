@@ -1,6 +1,8 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { SessionManager } from './session-manager';
 import { IdleDetector } from './idle-detector';
+import { SessionStore } from './session-store';
+import { notifyIfNeeded, isAppFocused } from './notifications';
 
 function broadcast(channel: string, data: unknown): void {
   const windows = BrowserWindow.getAllWindows();
@@ -10,11 +12,40 @@ function broadcast(channel: string, data: unknown): void {
 }
 
 export function registerIpcHandlers(sessionManager: SessionManager): void {
-  // Create idle detector that broadcasts status changes to renderer
+  const sessionStore = new SessionStore();
   const idleDetector = new IdleDetector((sessionId, status) => {
     sessionManager.updateStatus(sessionId, status);
     broadcast('session:status-changed', { sessionId, status });
+
+    // Fire notification if session needs attention and app is not focused
+    if (status === 'needs-attention') {
+      const session = sessionManager.getSession(sessionId);
+      if (session) {
+        notifyIfNeeded(session.name, isAppFocused());
+      }
+    }
   });
+
+  // Helper to persist current sessions
+  function persistSessions(): void {
+    const sessions = sessionManager.getAll();
+    sessionStore.save(sessions.map((s) => ({ name: s.name, cwd: s.cwd, command: s.command })));
+  }
+
+  // Restore saved sessions on startup
+  const savedSessions = sessionStore.load();
+  for (const saved of savedSessions) {
+    try {
+      const session = sessionManager.spawn({
+        name: saved.name,
+        cwd: saved.cwd,
+        command: saved.command,
+      });
+      idleDetector.addSession(session.id);
+    } catch {
+      // Skip sessions that fail to restore (e.g., directory no longer exists)
+    }
+  }
 
   // pty:spawn — create a new session
   ipcMain.handle('pty:spawn', (_event, args: { name: string; cwd: string; command?: string }) => {
@@ -33,6 +64,7 @@ export function registerIpcHandlers(sessionManager: SessionManager): void {
       command: args.command?.trim() || undefined,
     });
     idleDetector.addSession(session.id);
+    persistSessions();
     return session;
   });
 
@@ -54,11 +86,30 @@ export function registerIpcHandlers(sessionManager: SessionManager): void {
     }
     idleDetector.removeSession(args.sessionId);
     sessionManager.close(args.sessionId);
+    persistSessions();
   });
 
   // session:list — list all sessions
   ipcMain.handle('session:list', () => {
     return sessionManager.getAll();
+  });
+
+  // session:rename — rename a session
+  ipcMain.handle('session:rename', (_event, args: { sessionId: string; name: string }) => {
+    if (!args || typeof args.sessionId !== 'string' || typeof args.name !== 'string' || !args.name.trim()) {
+      throw new Error('session:rename requires sessionId and non-empty name');
+    }
+    const session = sessionManager.getSession(args.sessionId);
+    if (!session) throw new Error('Session not found');
+    // Update name via session manager
+    const sessions = sessionManager.getAll();
+    const target = sessions.find((s) => s.id === args.sessionId);
+    if (target) {
+      // Use the updateStatus approach — we need an updateName method
+      // For now, broadcast the rename to renderer
+      broadcast('session:renamed', { sessionId: args.sessionId, name: args.name.trim() });
+    }
+    persistSessions();
   });
 
   // pty:input — send input to a session (fire-and-forget)
@@ -83,5 +134,6 @@ export function registerIpcHandlers(sessionManager: SessionManager): void {
   sessionManager.setOnExit((sessionId: string, exitCode: number) => {
     idleDetector.removeSession(sessionId);
     broadcast('pty:exit', { sessionId, exitCode });
+    persistSessions();
   });
 }

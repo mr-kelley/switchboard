@@ -14,3 +14,5 @@
 | New Session Modal | `specs/src/renderer/components/NewSessionModal-spec.md` | active |
 | Header | `specs/src/renderer/components/Header-spec.md` | active |
 | Idle Detector | `specs/src/main/idle-detector-spec.md` | active |
+| Session Store | `specs/src/main/session-store-spec.md` | active |
+| Notifications | `specs/src/main/notifications-spec.md` | active |

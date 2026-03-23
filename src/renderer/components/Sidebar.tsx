@@ -1,9 +1,42 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSessions } from '../state/sessions';
 import SessionTab from './SessionTab';
+import ContextMenu from './ContextMenu';
+
+interface ContextMenuState {
+  sessionId: string;
+  x: number;
+  y: number;
+}
 
 export default function Sidebar(): React.ReactElement {
-  const { state, setActiveSession } = useSessions();
+  const { state, setActiveSession, removeSession, updateSessionName } = useSessions();
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  const handleContextMenu = useCallback((sessionId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ sessionId, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleRename = useCallback(() => {
+    if (!contextMenu) return;
+    const session = state.sessions.find((s) => s.id === contextMenu.sessionId);
+    if (!session) return;
+    const newName = prompt('Rename session:', session.name);
+    if (newName && newName.trim()) {
+      updateSessionName(contextMenu.sessionId, newName.trim());
+    }
+  }, [contextMenu, state.sessions, updateSessionName]);
+
+  const handleClose = useCallback(() => {
+    if (!contextMenu) return;
+    try {
+      window.switchboard.pty.close(contextMenu.sessionId);
+    } catch {
+      // PTY might already be dead
+    }
+    removeSession(contextMenu.sessionId);
+  }, [contextMenu, removeSession]);
 
   return (
     <div
@@ -42,10 +75,22 @@ export default function Sidebar(): React.ReactElement {
               session={session}
               isActive={session.id === state.activeSessionId}
               onSelect={() => setActiveSession(session.id)}
+              onContextMenu={(e) => handleContextMenu(session.id, e)}
             />
           ))
         )}
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            { label: 'Rename', action: handleRename },
+            { label: 'Close Session', action: handleClose },
+          ]}
+        />
+      )}
     </div>
   );
 }

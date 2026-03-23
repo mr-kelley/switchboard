@@ -5,6 +5,7 @@ interface SessionTabProps {
   session: SessionInfo;
   isActive: boolean;
   onSelect: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -13,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
   'needs-attention': '#f38ba8',
 };
 
-export default function SessionTab({ session, isActive, onSelect }: SessionTabProps): React.ReactElement {
+export default function SessionTab({ session, isActive, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
   const dotColor = STATUS_COLORS[session.status] || '#6c7086';
   const needsAttention = session.status === 'needs-attention';
 
@@ -21,6 +22,7 @@ export default function SessionTab({ session, isActive, onSelect }: SessionTabPr
     <button
       data-testid={`session-tab-${session.id}`}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{
         display: 'flex',
         alignItems: 'center',

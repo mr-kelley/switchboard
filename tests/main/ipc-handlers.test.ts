@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as os from 'os';
+import * as path from 'path';
 
 // Store registered handlers
 const handlers = new Map<string, Function>();
@@ -16,6 +18,13 @@ vi.mock('electron', () => ({
   BrowserWindow: {
     getAllWindows: vi.fn().mockReturnValue([]),
   },
+  app: {
+    getPath: vi.fn().mockReturnValue(path.join(os.tmpdir(), 'switchboard-test-ipc')),
+  },
+  Notification: Object.assign(
+    vi.fn().mockImplementation(() => ({ show: vi.fn() })),
+    { isSupported: () => true }
+  ),
 }));
 
 // Mock SessionManager
@@ -23,6 +32,8 @@ const mockSpawn = vi.fn().mockReturnValue({ id: 'test-id', name: 'test', cwd: '/
 const mockResize = vi.fn();
 const mockClose = vi.fn();
 const mockGetAll = vi.fn().mockReturnValue([]);
+const mockGetSession = vi.fn();
+const mockUpdateStatus = vi.fn();
 const mockWrite = vi.fn();
 const mockSetOnData = vi.fn();
 const mockSetOnExit = vi.fn();
@@ -32,6 +43,8 @@ const mockSessionManager = {
   resize: mockResize,
   close: mockClose,
   getAll: mockGetAll,
+  getSession: mockGetSession,
+  updateStatus: mockUpdateStatus,
   write: mockWrite,
   setOnData: mockSetOnData,
   setOnExit: mockSetOnExit,
