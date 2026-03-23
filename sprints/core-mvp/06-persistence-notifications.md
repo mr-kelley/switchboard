@@ -2,7 +2,7 @@
 sprint: 6
 title: Session Persistence & Notifications
 milestone: Core MVP
-status: active
+status: completed
 ---
 
 ## Goal

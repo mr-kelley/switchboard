@@ -3,7 +3,7 @@
 ## Milestones
 
 ### 1. Core MVP
-**Status:** `active`
+**Status:** `completed`
 
 **Outcome:** A developer can launch Switchboard, create multiple terminal sessions running Claude Code, and see at a glance which sessions are working, idle, or waiting for input — without switching tabs. Background sessions trigger native OS notifications when they need attention. Sessions persist across app restarts.
 
