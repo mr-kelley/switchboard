@@ -2,7 +2,7 @@
 sprint: 1
 title: Electron Shell & Project Skeleton
 milestone: Core MVP
-status: planned
+status: active
 ---
 
 ## Goal
