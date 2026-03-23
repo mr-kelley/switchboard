@@ -1,7 +1,10 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
+import { SessionManager } from './session-manager';
+import { registerIpcHandlers } from './ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
+const sessionManager = new SessionManager();
 
 const isDev = !app.isPackaged;
 
@@ -31,6 +34,7 @@ export function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  registerIpcHandlers(sessionManager);
   mainWindow = createWindow();
 
   app.on('activate', () => {
@@ -42,4 +46,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+app.on('before-quit', () => {
+  sessionManager.closeAll();
 });

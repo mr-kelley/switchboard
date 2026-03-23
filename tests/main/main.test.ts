@@ -24,8 +24,23 @@ vi.mock('electron', () => {
     BrowserWindow: Object.assign(BrowserWindowConstructor, {
       getAllWindows: vi.fn().mockReturnValue([]),
     }),
+    ipcMain: {
+      handle: vi.fn(),
+      on: vi.fn(),
+    },
   };
 });
+
+vi.mock('node-pty', () => ({
+  spawn: vi.fn().mockReturnValue({
+    pid: 1,
+    write: vi.fn(),
+    resize: vi.fn(),
+    kill: vi.fn(),
+    onData: vi.fn(),
+    onExit: vi.fn(),
+  }),
+}));
 
 describe('createWindow', () => {
   beforeEach(() => {
