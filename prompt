@@ -1,0 +1,57 @@
+Build an Electron app called "Switchboard" — a Slack-style multi-session 
+terminal manager for Claude Code workflows.
+
+STACK: Electron, React, xterm.js, node-pty
+
+LAYOUT:
+- Left sidebar (~220px): list of project session tabs, each showing project 
+  name and status indicator dot
+- Main area: active terminal (xterm.js), full height/width minus sidebar
+- Header bar: active project name, "+ New Session" button, settings icon
+
+SESSION TABS (sidebar):
+- Each tab has: colored dot (left), project name, optional short path label
+- Dot states: 
+    green = Claude is working (output is flowing)
+    yellow = idle/quiet (no output for 10s, prompt not yet detected)
+    red pulsing = waiting for input (Claude Code prompt detected)
+- Clicking a tab switches the active terminal pane; background tabs keep 
+  running via node-pty, their xterm.js instances remain mounted but hidden 
+  (display:none, not destroyed)
+
+IDLE DETECTION:
+- In the main process, watch each pty's output stream
+- Claude Code's ready-for-input state shows a prompt matching: 
+  /^[>❯]\s*$/m or similar — treat this as configurable via a 
+  PROMPT_PATTERN env var or settings JSON
+- When pattern detected after ≥2 seconds of activity: emit 
+  session-needs-attention IPC event for that session ID
+- When user sends any input to a session: emit session-working IPC event
+- Also trigger yellow state after 10s of no output if red hasn't triggered yet
+
+SESSION MANAGEMENT:
+- "+ New Session" opens a modal: project name (text), working directory 
+  (path picker), optional shell command override (default: "claude")
+- Sessions persist in a local JSON file (sessions.json) so app remembers 
+  them on relaunch
+- Right-click a tab: rename, change directory, close session
+
+NOTIFICATIONS:
+- When any background tab flips to red (needs-attention) and the app is 
+  not focused: show a native OS desktop notification with the project name
+- Optional: system tray icon badge showing count of sessions needing attention
+
+TERMINAL:
+- xterm.js with FitAddon (fills available space), WebLinksAddon
+- Theme: dark, match system accent color or configurable
+- Each session gets its own xterm.js Terminal instance, persisted for the 
+  app lifetime (switching tabs does display:none swap, not remount)
+
+NON-GOALS for this version:
+- No session sharing/collaboration
+- No SSH remoting
+- No split panes
+
+Start with: main.js (Electron main), preload.js, App.jsx (root React), 
+Sidebar.jsx, TerminalPane.jsx, sessionManager.js (node-pty + IPC logic), 
+and a basic package.json with all deps.
