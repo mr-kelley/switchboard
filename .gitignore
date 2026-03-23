@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+
+# Electron
+*.asar
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Decision log derived index
+decisions/index.sqlite
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
