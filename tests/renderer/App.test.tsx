@@ -23,7 +23,10 @@ beforeEach(() => {
       onData: vi.fn().mockReturnValue(() => {}),
       onExit: vi.fn().mockReturnValue(() => {}),
     },
-    session: { list: vi.fn().mockResolvedValue([]) },
+    session: {
+      list: vi.fn().mockResolvedValue([]),
+      onStatusChanged: vi.fn().mockReturnValue(() => {}),
+    },
   };
 });
 

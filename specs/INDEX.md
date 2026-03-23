@@ -13,3 +13,4 @@
 | Session Tab | `specs/src/renderer/components/SessionTab-spec.md` | active |
 | New Session Modal | `specs/src/renderer/components/NewSessionModal-spec.md` | active |
 | Header | `specs/src/renderer/components/Header-spec.md` | active |
+| Idle Detector | `specs/src/main/idle-detector-spec.md` | active |

@@ -28,6 +28,7 @@ export interface SwitchboardAPI {
   };
   session: {
     list(): Promise<SessionInfo[]>;
+    onStatusChanged(callback: (sessionId: string, status: SessionStatus) => void): () => void;
   };
 }
 

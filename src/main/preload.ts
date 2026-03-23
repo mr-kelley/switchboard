@@ -34,6 +34,13 @@ const api = {
     list() {
       return ipcRenderer.invoke('session:list');
     },
+    onStatusChanged(callback: (sessionId: string, status: string) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { sessionId: string; status: string }) => {
+        callback(args.sessionId, args.status);
+      };
+      ipcRenderer.on('session:status-changed', handler);
+      return () => ipcRenderer.removeListener('session:status-changed', handler);
+    },
   },
 };
 

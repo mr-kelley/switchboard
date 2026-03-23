@@ -6,7 +6,7 @@ import TerminalPane from './components/TerminalPane';
 import NewSessionModal from './components/NewSessionModal';
 
 function AppContent(): React.ReactElement {
-  const { state, addSession, removeSession } = useSessions();
+  const { state, addSession, removeSession, updateSessionStatus } = useSessions();
   const [modalOpen, setModalOpen] = useState(false);
 
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId) || null;
@@ -18,6 +18,14 @@ function AppContent(): React.ReactElement {
     });
     return unsubExit;
   }, [removeSession]);
+
+  // Listen for session status changes from idle detector
+  useEffect(() => {
+    const unsubStatus = window.switchboard.session.onStatusChanged((sessionId, status) => {
+      updateSessionStatus(sessionId, status as import('../shared/types').SessionStatus);
+    });
+    return unsubStatus;
+  }, [updateSessionStatus]);
 
   return (
     <div
