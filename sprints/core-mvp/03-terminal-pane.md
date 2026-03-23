@@ -2,7 +2,7 @@
 sprint: 3
 title: Terminal Pane (xterm.js)
 milestone: Core MVP
-status: planned
+status: active
 ---
 
 ## Goal

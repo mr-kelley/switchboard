@@ -2,7 +2,7 @@
 sprint: 2
 title: PTY Session Manager
 milestone: Core MVP
-status: active
+status: completed
 ---
 
 ## Goal
