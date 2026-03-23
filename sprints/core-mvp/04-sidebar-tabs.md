@@ -2,7 +2,7 @@
 sprint: 4
 title: Sidebar & Session Tabs
 milestone: Core MVP
-status: active
+status: completed
 ---
 
 ## Goal

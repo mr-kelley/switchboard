@@ -2,7 +2,7 @@
 sprint: 5
 title: Idle Detection & Status Indicators
 milestone: Core MVP
-status: planned
+status: active
 ---
 
 ## Goal
