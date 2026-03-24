@@ -2,7 +2,7 @@
 sprint: 8
 title: Tab Reordering
 milestone: Flow
-status: active
+status: completed
 ---
 
 ## Goal

@@ -5,9 +5,10 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 
 ## Active Work
 - **Milestone:** Flow (v2)
-- No active sprint. Sprint 07 complete. Next: Sprint 08 (Tab Reordering).
+- No active sprint. Sprint 08 complete. Next: Sprint 09 (Keyboard Shortcuts).
 
 ## Recent Completions
+- Sprint 08: Tab Reordering — commit `1a6e17a` — 2026-03-24.
 - Sprint 07: Preferences Infrastructure — commit `37dd482` — 2026-03-24.
 - Sprint 06: Session Persistence & Notifications — commit `4a8df56` — 2026-03-23.
 - Sprint 05: Idle Detection & Status Indicators — commit `380971e` — 2026-03-23.
@@ -27,7 +28,7 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `src/renderer/components/` — TerminalPane, Sidebar, SessionTab, Header, NewSessionModal, ContextMenu.
 - `src/renderer/state/` — sessions.tsx (React context + reducer).
 - `src/shared/` — Shared types (SwitchboardAPI, SessionInfo, etc.).
-- `tests/` — 17 test files, 145 tests passing.
+- `tests/` — 18 test files, 150 tests passing.
 
 ## Key Decisions
 *(none logged — all choices were Class A)*
