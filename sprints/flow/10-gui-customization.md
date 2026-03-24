@@ -2,7 +2,7 @@
 sprint: 10
 title: Full GUI Customization
 milestone: Flow
-status: active
+status: completed
 ---
 
 ## Goal
