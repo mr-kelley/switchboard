@@ -5,10 +5,10 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 
 ## Active Work
 - **Milestone:** Flow (v2)
-- **Sprint 07:** Preferences Infrastructure — `sprints/flow/07-preferences-infrastructure.md` — status: active.
-- **Branch:** `work/2026-03-24T000000Z/preferences-infrastructure`
+- No active sprint. Sprint 07 complete. Next: Sprint 08 (Tab Reordering).
 
 ## Recent Completions
+- Sprint 07: Preferences Infrastructure — commit `37dd482` — 2026-03-24.
 - Sprint 06: Session Persistence & Notifications — commit `4a8df56` — 2026-03-23.
 - Sprint 05: Idle Detection & Status Indicators — commit `380971e` — 2026-03-23.
 - Sprint 04: Sidebar & Session Tabs — commit `402b049` — 2026-03-23.
@@ -27,7 +27,7 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `src/renderer/components/` — TerminalPane, Sidebar, SessionTab, Header, NewSessionModal, ContextMenu.
 - `src/renderer/state/` — sessions.tsx (React context + reducer).
 - `src/shared/` — Shared types (SwitchboardAPI, SessionInfo, etc.).
-- `tests/` — 14 test files, 99 tests passing.
+- `tests/` — 17 test files, 145 tests passing.
 
 ## Key Decisions
 *(none logged — all choices were Class A)*
@@ -36,4 +36,4 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 *(none)*
 
 ## Session Notes
-Flow (v2) milestone started. Sprint 07 (Preferences Infrastructure) is active — building the foundational preferences system that all subsequent Flow features depend on.
+Flow (v2) milestone in progress. Sprint 07 (Preferences Infrastructure) complete — foundational preferences system delivered. Ready for Sprint 08 (Tab Reordering).
