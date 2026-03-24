@@ -31,10 +31,31 @@ const TERMINAL_THEME = {
   brightWhite: '#a6adc8',
 };
 
+function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
+  try {
+    const { WebglAddon } = require('@xterm/addon-webgl');
+    const addon = new WebglAddon();
+    addon.onContextLoss(() => {
+      // On context loss, dispose WebGL — xterm falls back to its canvas renderer.
+      // A fresh WebGL addon will be re-attached when the pane becomes visible again.
+      try {
+        addon.dispose();
+      } catch {
+        // Already disposed
+      }
+    });
+    terminal.loadAddon(addon);
+    return addon;
+  } catch {
+    return null;
+  }
+}
+
 export default function TerminalPane({ sessionId, visible }: TerminalPaneProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const webglAddonRef = useRef<{ dispose: () => void } | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -54,19 +75,10 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
 
-    // Try WebGL, fall back to canvas
-    try {
-      const { WebglAddon } = require('@xterm/addon-webgl');
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      terminal.loadAddon(webglAddon);
-    } catch {
-      // WebGL not available — canvas renderer is fine
-    }
-
     terminal.open(containerRef.current);
+
+    // Attach WebGL after open
+    webglAddonRef.current = tryAttachWebgl(terminal);
 
     // Fit after open
     try {
@@ -115,18 +127,24 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     };
   }, [sessionId]);
 
-  // Re-fit and focus when visibility changes
+  // Re-fit, re-attach WebGL, and focus when visibility changes
   useEffect(() => {
     if (visible && fitAddonRef.current && terminalRef.current) {
-      // Small delay to let CSS display change take effect
       const timer = setTimeout(() => {
+        const terminal = terminalRef.current;
+        if (!terminal) return;
+
         try {
+          // Re-attach WebGL if it was lost while hidden
+          if (!webglAddonRef.current) {
+            webglAddonRef.current = tryAttachWebgl(terminal);
+          }
           fitAddonRef.current?.fit();
-          terminalRef.current?.focus();
+          terminal.focus();
         } catch {
           // Ignore
         }
-      }, 10);
+      }, 50);
       return () => clearTimeout(timer);
     }
   }, [visible]);

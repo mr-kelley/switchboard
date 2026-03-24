@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
     "dev:renderer": "vite",
-    "dev:main": "tsc -p tsconfig.main.json --watch & sleep 2 && electron .",
+    "dev:main": "tsc -p tsconfig.main.json --watch & sleep 2 && electron . --no-sandbox",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "build": "npm run build:main && npm run build:renderer",
