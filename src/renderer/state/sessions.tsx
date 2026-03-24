@@ -4,6 +4,7 @@ import type { SessionInfo, SessionStatus } from '../../shared/types';
 interface SessionsState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  unreadSessions: Set<string>;
 }
 
 type SessionsAction =
@@ -12,12 +13,15 @@ type SessionsAction =
   | { type: 'SET_ACTIVE'; id: string }
   | { type: 'UPDATE_STATUS'; id: string; status: SessionStatus }
   | { type: 'UPDATE_NAME'; id: string; name: string }
-  | { type: 'REORDER_SESSIONS'; orderedIds: string[] };
+  | { type: 'REORDER_SESSIONS'; orderedIds: string[] }
+  | { type: 'MARK_UNREAD'; id: string }
+  | { type: 'CLEAR_UNREAD'; id: string };
 
 function sessionsReducer(state: SessionsState, action: SessionsAction): SessionsState {
   switch (action.type) {
     case 'ADD_SESSION':
       return {
+        ...state,
         sessions: [...state.sessions, action.session],
         activeSessionId: action.session.id,
       };
@@ -27,10 +31,15 @@ function sessionsReducer(state: SessionsState, action: SessionsAction): Sessions
       if (activeId === action.id) {
         activeId = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
       }
-      return { sessions: remaining, activeSessionId: activeId };
+      const nextUnread = new Set(state.unreadSessions);
+      nextUnread.delete(action.id);
+      return { sessions: remaining, activeSessionId: activeId, unreadSessions: nextUnread };
     }
-    case 'SET_ACTIVE':
-      return { ...state, activeSessionId: action.id };
+    case 'SET_ACTIVE': {
+      const next = new Set(state.unreadSessions);
+      next.delete(action.id);
+      return { ...state, activeSessionId: action.id, unreadSessions: next };
+    }
     case 'UPDATE_STATUS':
       return {
         ...state,
@@ -53,6 +62,18 @@ function sessionsReducer(state: SessionsState, action: SessionsAction): Sessions
       const remaining = state.sessions.filter((s) => !idSet.has(s.id));
       return { ...state, sessions: [...reordered, ...remaining] };
     }
+    case 'MARK_UNREAD': {
+      if (action.id === state.activeSessionId) return state;
+      const next = new Set(state.unreadSessions);
+      next.add(action.id);
+      return { ...state, unreadSessions: next };
+    }
+    case 'CLEAR_UNREAD': {
+      if (!state.unreadSessions.has(action.id)) return state;
+      const next = new Set(state.unreadSessions);
+      next.delete(action.id);
+      return { ...state, unreadSessions: next };
+    }
     default:
       return state;
   }
@@ -66,6 +87,7 @@ interface SessionsContextValue {
   updateSessionStatus: (id: string, status: SessionStatus) => void;
   updateSessionName: (id: string, name: string) => void;
   reorderSessions: (orderedIds: string[]) => void;
+  markUnread: (id: string) => void;
 }
 
 const SessionsContext = createContext<SessionsContextValue | null>(null);
@@ -74,6 +96,7 @@ export function SessionsProvider({ children }: { children: React.ReactNode }): R
   const [state, dispatch] = useReducer(sessionsReducer, {
     sessions: [],
     activeSessionId: null,
+    unreadSessions: new Set<string>(),
   });
 
   const addSession = useCallback((session: SessionInfo) => {
@@ -100,8 +123,12 @@ export function SessionsProvider({ children }: { children: React.ReactNode }): R
     dispatch({ type: 'REORDER_SESSIONS', orderedIds });
   }, []);
 
+  const markUnread = useCallback((id: string) => {
+    dispatch({ type: 'MARK_UNREAD', id });
+  }, []);
+
   return (
-    <SessionsContext.Provider value={{ state, addSession, removeSession, setActiveSession, updateSessionStatus, updateSessionName, reorderSessions }}>
+    <SessionsContext.Provider value={{ state, addSession, removeSession, setActiveSession, updateSessionStatus, updateSessionName, reorderSessions, markUnread }}>
       {children}
     </SessionsContext.Provider>
   );

@@ -27,6 +27,7 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   'terminal:zoom-in': 'Control+=',
   'terminal:zoom-out': 'Control+-',
   'terminal:zoom-reset': 'Control+0',
+  'terminal:search': 'Control+Shift+f',
 };
 
 export function parseShortcut(shortcut: string): ParsedShortcut {

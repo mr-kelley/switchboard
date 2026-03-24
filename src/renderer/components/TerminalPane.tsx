@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -8,6 +8,8 @@ import { usePreferences } from '../state/preferences';
 interface TerminalPaneProps {
   sessionId: string;
   visible: boolean;
+  searchVisible?: boolean;
+  onSearchClose?: () => void;
 }
 
 function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
@@ -28,13 +30,26 @@ function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
   }
 }
 
-export default function TerminalPane({ sessionId, visible }: TerminalPaneProps): React.ReactElement {
+function tryAttachSearch(terminal: Terminal): { findNext: (query: string) => boolean; findPrevious: (query: string) => boolean; clearDecorations: () => void; dispose: () => void } | null {
+  try {
+    const { SearchAddon } = require('@xterm/addon-search');
+    const addon = new SearchAddon();
+    terminal.loadAddon(addon);
+    return addon;
+  } catch {
+    return null;
+  }
+}
+
+export default function TerminalPane({ sessionId, visible, searchVisible, onSearchClose }: TerminalPaneProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const webglAddonRef = useRef<{ dispose: () => void } | null>(null);
   const visibleRef = useRef(visible);
   const needsResizeRef = useRef(false);
+  const searchAddonRef = useRef<ReturnType<typeof tryAttachSearch>>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { prefs } = usePreferences();
 
   // Keep visibility ref in sync
@@ -61,6 +76,9 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
 
     // Attach WebGL after open
     webglAddonRef.current = tryAttachWebgl(terminal);
+
+    // Attach search addon
+    searchAddonRef.current = tryAttachSearch(terminal);
 
     // Fit after open
     try {
@@ -186,6 +204,77 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
             zIndex: 0,
           }}
         />
+      )}
+      {searchVisible && (
+        <div
+          data-testid={`search-bar-${sessionId}`}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 16,
+            zIndex: 10,
+            display: 'flex',
+            gap: 4,
+            backgroundColor: prefs.uiColors.inputBg,
+            border: `1px solid ${prefs.uiColors.inputBorder}`,
+            borderRadius: 4,
+            padding: '4px 8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+        >
+          <input
+            data-testid={`search-input-${sessionId}`}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                  searchAddonRef.current?.findPrevious(searchQuery);
+                } else {
+                  searchAddonRef.current?.findNext(searchQuery);
+                }
+              }
+              if (e.key === 'Escape') {
+                searchAddonRef.current?.clearDecorations();
+                setSearchQuery('');
+                onSearchClose?.();
+              }
+            }}
+            placeholder="Search..."
+            autoFocus
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              color: prefs.uiColors.inputText,
+              fontSize: 12,
+              outline: 'none',
+              width: 180,
+            }}
+          />
+          <button
+            onClick={() => searchAddonRef.current?.findPrevious(searchQuery)}
+            style={{ backgroundColor: 'transparent', border: 'none', color: prefs.uiColors.appTextMuted, cursor: 'pointer', fontSize: 12 }}
+          >
+            &#9650;
+          </button>
+          <button
+            onClick={() => searchAddonRef.current?.findNext(searchQuery)}
+            style={{ backgroundColor: 'transparent', border: 'none', color: prefs.uiColors.appTextMuted, cursor: 'pointer', fontSize: 12 }}
+          >
+            &#9660;
+          </button>
+          <button
+            onClick={() => {
+              searchAddonRef.current?.clearDecorations();
+              setSearchQuery('');
+              onSearchClose?.();
+            }}
+            style={{ backgroundColor: 'transparent', border: 'none', color: prefs.uiColors.appTextMuted, cursor: 'pointer', fontSize: 12 }}
+          >
+            &#10005;
+          </button>
+        </div>
       )}
       <div
         ref={containerRef}

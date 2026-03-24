@@ -24,6 +24,7 @@ function getDefaultPreferences(): SwitchboardPreferences {
     sessionOrder: [],
     cursorBlink: true,
     scrollbackLines: 5000,
+    customCssPath: null,
   };
 }
 

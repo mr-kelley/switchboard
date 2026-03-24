@@ -7,6 +7,7 @@ import SessionTab from './SessionTab';
 interface SortableSessionTabProps {
   session: SessionInfo;
   isActive: boolean;
+  hasUnread?: boolean;
   onSelect: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -14,6 +15,7 @@ interface SortableSessionTabProps {
 export default function SortableSessionTab({
   session,
   isActive,
+  hasUnread,
   onSelect,
   onContextMenu,
 }: SortableSessionTabProps): React.ReactElement {
@@ -44,6 +46,7 @@ export default function SortableSessionTab({
       <SessionTab
         session={session}
         isActive={isActive}
+        hasUnread={hasUnread}
         onSelect={onSelect}
         onContextMenu={onContextMenu}
       />

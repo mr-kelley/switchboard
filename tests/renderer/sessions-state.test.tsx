@@ -88,6 +88,37 @@ describe('useSessions', () => {
     expect(names).toEqual(['third', 'first', 'second']);
   });
 
+  it('markUnread marks a non-active session as unread', () => {
+    const { result } = renderHook(() => useSessions(), { wrapper });
+    act(() => {
+      result.current.addSession(makeSession('1', 'first'));
+      result.current.addSession(makeSession('2', 'second'));
+    });
+    // Active is '2', mark '1' as unread
+    act(() => result.current.markUnread('1'));
+    expect(result.current.state.unreadSessions.has('1')).toBe(true);
+  });
+
+  it('markUnread does not mark active session', () => {
+    const { result } = renderHook(() => useSessions(), { wrapper });
+    act(() => result.current.addSession(makeSession('1', 'test')));
+    // Active is '1', try to mark it
+    act(() => result.current.markUnread('1'));
+    expect(result.current.state.unreadSessions.has('1')).toBe(false);
+  });
+
+  it('setActiveSession clears unread for that session', () => {
+    const { result } = renderHook(() => useSessions(), { wrapper });
+    act(() => {
+      result.current.addSession(makeSession('1', 'first'));
+      result.current.addSession(makeSession('2', 'second'));
+    });
+    act(() => result.current.markUnread('1'));
+    expect(result.current.state.unreadSessions.has('1')).toBe(true);
+    act(() => result.current.setActiveSession('1'));
+    expect(result.current.state.unreadSessions.has('1')).toBe(false);
+  });
+
   it('reorderSessions appends sessions missing from orderedIds', () => {
     const { result } = renderHook(() => useSessions(), { wrapper });
     act(() => {

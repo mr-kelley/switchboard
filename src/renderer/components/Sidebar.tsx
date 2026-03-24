@@ -110,6 +110,7 @@ export default function Sidebar(): React.ReactElement {
                   key={session.id}
                   session={session}
                   isActive={session.id === state.activeSessionId}
+                  hasUnread={state.unreadSessions.has(session.id)}
                   onSelect={() => setActiveSession(session.id)}
                   onContextMenu={(e) => handleContextMenu(session.id, e)}
                 />

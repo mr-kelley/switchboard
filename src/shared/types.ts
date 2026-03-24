@@ -95,6 +95,7 @@ export interface SwitchboardPreferences {
   sessionOrder: string[];
   cursorBlink: boolean;
   scrollbackLines: number;
+  customCssPath: string | null;
 }
 
 /** API exposed by the preload script via contextBridge. */

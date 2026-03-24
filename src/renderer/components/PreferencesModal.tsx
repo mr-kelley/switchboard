@@ -313,6 +313,22 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
               </div>
             )}
 
+            {activeSection === 'terminal' && prefs.customCssPath !== undefined && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Custom CSS Path</label>
+                <input
+                  type="text"
+                  value={prefs.customCssPath || ''}
+                  onChange={(e) => updatePrefs({ customCssPath: e.target.value || null })}
+                  placeholder="/path/to/custom.css"
+                  style={inputStyle}
+                />
+                <div style={{ fontSize: 11, color: uiColors.appTextFaint, marginTop: 4 }}>
+                  Load a custom CSS file for advanced visual customization.
+                </div>
+              </div>
+            )}
+
             {activeSection === 'terminal' && (
               <div>
                 <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>

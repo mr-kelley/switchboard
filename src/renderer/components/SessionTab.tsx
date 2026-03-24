@@ -5,11 +5,12 @@ import { usePreferences } from '../state/preferences';
 interface SessionTabProps {
   session: SessionInfo;
   isActive: boolean;
+  hasUnread?: boolean;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export default function SessionTab({ session, isActive, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
+export default function SessionTab({ session, isActive, hasUnread, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
   const { prefs } = usePreferences();
   const { uiColors } = prefs;
 
@@ -54,9 +55,21 @@ export default function SessionTab({ session, isActive, onSelect, onContextMenu 
           animation: needsAttention ? 'pulse 1.5s ease-in-out infinite' : 'none',
         }}
       />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
         {session.name}
       </span>
+      {hasUnread && !isActive && (
+        <span
+          data-testid={`unread-badge-${session.id}`}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: uiColors.accentPrimary,
+            flexShrink: 0,
+          }}
+        />
+      )}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }

@@ -7,13 +7,15 @@ import Header from './components/Header';
 import TerminalPane from './components/TerminalPane';
 import NewSessionModal from './components/NewSessionModal';
 import PreferencesModal from './components/PreferencesModal';
+import StatusBar from './components/StatusBar';
 
 function AppContent(): React.ReactElement {
-  const { state, addSession, removeSession, setActiveSession, updateSessionStatus } = useSessions();
+  const { state, addSession, removeSession, setActiveSession, updateSessionStatus, markUnread } = useSessions();
   const { prefs, updatePrefs } = usePreferences();
   const [modalOpen, setModalOpen] = useState(false);
   const [prefsModalOpen, setPrefsModalOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [searchVisible, setSearchVisible] = useState(false);
 
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId) || null;
 
@@ -24,6 +26,33 @@ function AppContent(): React.ReactElement {
     });
     return unsubExit;
   }, [removeSession]);
+
+  // Mark background tabs as unread when they receive output
+  useEffect(() => {
+    const unsubData = window.switchboard.pty.onData((sessionId: string) => {
+      markUnread(sessionId);
+    });
+    return unsubData;
+  }, [markUnread]);
+
+  // Custom CSS injection
+  useEffect(() => {
+    if (!prefs.customCssPath) return;
+    const style = document.createElement('style');
+    style.setAttribute('data-custom-css', 'true');
+    fetch(prefs.customCssPath)
+      .then((res) => res.text())
+      .then((css) => {
+        style.textContent = css;
+        document.head.appendChild(style);
+      })
+      .catch(() => {
+        // File not found or inaccessible — silently ignore
+      });
+    return () => {
+      style.remove();
+    };
+  }, [prefs.customCssPath]);
 
   // Listen for session status changes from idle detector
   useEffect(() => {
@@ -75,6 +104,7 @@ function AppContent(): React.ReactElement {
     'terminal:zoom-in': () => updatePrefs({ terminalFontSize: Math.min(32, prefs.terminalFontSize + 1) }),
     'terminal:zoom-out': () => updatePrefs({ terminalFontSize: Math.max(8, prefs.terminalFontSize - 1) }),
     'terminal:zoom-reset': () => updatePrefs({ terminalFontSize: 14 }),
+    'terminal:search': () => setSearchVisible((v) => !v),
   }), [closeActiveSession, cycleSession, selectSessionByIndex, prefs.terminalFontSize, updatePrefs]);
 
   useKeyboardShortcuts(prefs.shortcuts, shortcutHandlers);
@@ -122,10 +152,13 @@ function AppContent(): React.ReactElement {
                 key={session.id}
                 sessionId={session.id}
                 visible={session.id === state.activeSessionId}
+                searchVisible={searchVisible && session.id === state.activeSessionId}
+                onSearchClose={() => setSearchVisible(false)}
               />
             ))
           )}
         </div>
+        <StatusBar />
       </div>
       <NewSessionModal
         isOpen={modalOpen}

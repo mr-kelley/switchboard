@@ -21,6 +21,7 @@ export const mockPrefs = {
   sessionOrder: [],
   cursorBlink: true,
   scrollbackLines: 5000,
+  customCssPath: null,
 };
 
 export const mockUsePreferences = {
