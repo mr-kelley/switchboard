@@ -145,9 +145,53 @@ Override via environment variable:
 SWITCHBOARD_PROMPT_PATTERN='^custom-prompt>' switchboard
 ```
 
-## Specs
+## AI-Assisted Development (Aire)
 
-Detailed specifications for every source file live in `specs/` — see `specs/INDEX.md` for the full index.
+This project is built using the **Aire governance system** — a spec-first, decision-logged workflow designed for AI-assisted development with Claude Code.
+
+### What happens when you run Claude Code in this repo
+
+When Claude Code starts a session at the repo root, it reads `CLAUDE.md`, which instructs it to:
+
+1. Load the **role file** (`claude/terminal-emulator.role.md`) — defines what Claude can and cannot do, security requirements, performance targets, and verification checklists.
+2. Read **project state** (`STATE.md`) — current milestone, sprint status, test counts, and what's in progress.
+3. Follow **governance specs** in `claude/` — spec-first development, decision logging, git hygiene, planning, and documentation standards.
+4. Check the **active sprint** (path in `STATE.md`) for current work items and acceptance criteria.
+
+Claude Code will then operate under these constraints automatically: writing specs before implementation, logging architectural decisions, following git promotion rules (Profile B: work branch -> stage/test -> main), and maintaining state files as work progresses.
+
+### Governance files
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Entry point — tells Claude Code where to find everything |
+| `claude/terminal-emulator.role.md` | Role definition: scope, requirements, verification checklist |
+| `claude/spec-spec.md` | How to write and maintain specs |
+| `claude/decision-log-spec.md` | When and how to log architectural decisions |
+| `claude/claude.git-hygiene.md` | Branching, commit, and promotion rules |
+| `claude/state-tracker-spec.md` | How to maintain `STATE.md` |
+| `claude/state-pack-spec.md` | Session context loading at startup |
+| `claude/planning-spec.md` | Sprint and milestone planning |
+| `claude/documentation-spec.md` | Documentation requirements |
+
+### Project tracking files
+
+| File | Purpose |
+|------|---------|
+| `STATE.md` | Live project state (milestone, sprint, test counts) |
+| `NORTHSTAR.md` | Vision, target user, design principles |
+| `ROADMAP.md` | Milestones and their completion criteria |
+| `specs/INDEX.md` | Index of all implementation specs |
+| `decisions/` | Decision log entries |
+| `sprints/` | Sprint definitions and acceptance criteria |
+
+### Specs
+
+Every source file has a corresponding spec in `specs/` mirroring the `src/` path with a `-spec.md` suffix. Specs are the source of truth — implementation follows specs, not the other way around. See `specs/INDEX.md` for the full index.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding features, filing bugs, and working with the Aire governance system.
 
 ## License
 
