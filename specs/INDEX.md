@@ -20,3 +20,4 @@
 | Preferences Store | `specs/src/main/preferences-store-spec.md` | active |
 | Theme Presets | `specs/src/shared/themes-spec.md` | active |
 | Preferences State | `specs/src/renderer/state/preferences-spec.md` | active |
+| Sortable Session Tab | `specs/src/renderer/components/SortableSessionTab-spec.md` | active |

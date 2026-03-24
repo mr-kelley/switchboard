@@ -74,4 +74,31 @@ describe('useSessions', () => {
 
     expect(result.current.state.sessions[0].name).toBe('new-name');
   });
+
+  it('reorderSessions reorders the array to match orderedIds', () => {
+    const { result } = renderHook(() => useSessions(), { wrapper });
+    act(() => {
+      result.current.addSession(makeSession('1', 'first'));
+      result.current.addSession(makeSession('2', 'second'));
+      result.current.addSession(makeSession('3', 'third'));
+    });
+    act(() => result.current.reorderSessions(['3', '1', '2']));
+
+    const names = result.current.state.sessions.map((s) => s.name);
+    expect(names).toEqual(['third', 'first', 'second']);
+  });
+
+  it('reorderSessions appends sessions missing from orderedIds', () => {
+    const { result } = renderHook(() => useSessions(), { wrapper });
+    act(() => {
+      result.current.addSession(makeSession('1', 'first'));
+      result.current.addSession(makeSession('2', 'second'));
+      result.current.addSession(makeSession('3', 'third'));
+    });
+    // Only reorder 2 of 3 — the missing one should be appended
+    act(() => result.current.reorderSessions(['3', '1']));
+
+    const ids = result.current.state.sessions.map((s) => s.id);
+    expect(ids).toEqual(['3', '1', '2']);
+  });
 });

@@ -1,8 +1,8 @@
 ---
 title: Session State Management Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
-domain_tags: [renderer, react, state]
+domain_tags: [renderer, react, state, reordering]
 status: active
 governs: src/renderer/state/sessions.tsx
 ---
@@ -28,10 +28,11 @@ interface SessionsState {
 | `SET_ACTIVE` | Changes the active session ID |
 | `UPDATE_STATUS` | Updates a session's `status` field |
 | `UPDATE_NAME` | Updates a session's `name` field |
+| `REORDER_SESSIONS` | Reorders sessions array to match provided `orderedIds` |
 
 ## Context
 - `SessionsProvider`: wraps the app, provides state and dispatch via useReducer.
-- `useSessions()`: hook returning `{ state, addSession, removeSession, setActiveSession, updateSessionStatus, updateSessionName }`. Throws if used outside provider.
+- `useSessions()`: hook returning `{ state, addSession, removeSession, setActiveSession, updateSessionStatus, updateSessionName, reorderSessions }`. Throws if used outside provider.
 
 # Exports
 - `SessionsProvider`, `useSessions`
@@ -41,3 +42,5 @@ interface SessionsState {
 - Unit test: removeSession removes and switches active.
 - Unit test: setActiveSession changes active ID.
 - Unit test: updateSessionName updates the name.
+- Unit test: reorderSessions reorders the array to match orderedIds.
+- Unit test: reorderSessions appends sessions missing from orderedIds.
