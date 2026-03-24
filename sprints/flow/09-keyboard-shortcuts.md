@@ -2,7 +2,7 @@
 sprint: 9
 title: Keyboard Shortcuts
 milestone: Flow
-status: active
+status: completed
 ---
 
 ## Goal
