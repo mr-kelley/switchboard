@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e1e2e"/>
+      <stop offset="100%" style="stop-color:#313244"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="80" ry="80" fill="url(#bg)"/>
+  <!-- Terminal window frame -->
+  <rect x="56" y="80" width="400" height="352" rx="16" ry="16" fill="#181825" stroke="#45475a" stroke-width="3"/>
+  <!-- Title bar -->
+  <rect x="56" y="80" width="400" height="40" rx="16" ry="16" fill="#313244"/>
+  <rect x="56" y="104" width="400" height="16" fill="#313244"/>
+  <!-- Title bar dots -->
+  <circle cx="88" cy="100" r="7" fill="#f38ba8"/>
+  <circle cx="112" cy="100" r="7" fill="#f9e2af"/>
+  <circle cx="136" cy="100" r="7" fill="#a6e3a1"/>
+  <!-- Prompt line 1 -->
+  <text x="88" y="172" font-family="monospace" font-size="28" font-weight="bold" fill="#89b4fa">$</text>
+  <rect x="112" y="154" width="180" height="22" rx="3" fill="#cdd6f4" opacity="0.7"/>
+  <!-- Prompt line 2 -->
+  <text x="88" y="220" font-family="monospace" font-size="28" font-weight="bold" fill="#a6e3a1">$</text>
+  <rect x="112" y="202" width="140" height="22" rx="3" fill="#cdd6f4" opacity="0.5"/>
+  <!-- Prompt line 3 -->
+  <text x="88" y="268" font-family="monospace" font-size="28" font-weight="bold" fill="#f9e2af">$</text>
+  <rect x="112" y="250" width="220" height="22" rx="3" fill="#cdd6f4" opacity="0.3"/>
+  <!-- Cursor blink on line 4 -->
+  <text x="88" y="316" font-family="monospace" font-size="28" font-weight="bold" fill="#f38ba8">$</text>
+  <rect x="112" y="298" width="14" height="22" rx="2" fill="#cdd6f4">
+    <animate attributeName="opacity" values="1;0;1" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+  <!-- Sidebar indicator (tab dots on left) -->
+  <circle cx="36" cy="160" r="6" fill="#a6e3a1"/>
+  <circle cx="36" cy="208" r="6" fill="#f9e2af"/>
+  <circle cx="36" cy="256" r="6" fill="#f38ba8"/>
+  <circle cx="36" cy="304" r="6" fill="#45475a"/>
+</svg>

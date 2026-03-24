@@ -12,31 +12,96 @@
     "build": "npm run build:main && npm run build:renderer",
     "start": "electron .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:deb": "npm run build && electron-builder --linux deb",
+    "dist:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:snap": "npm run build && electron-builder --linux snap"
   },
-  "author": "",
+  "author": "mrkelley <mrkelley@users.noreply.github.com>",
+  "homepage": "https://github.com/mrkelley/switchboard",
   "license": "MIT",
   "dependencies": {
-    "electron-is-dev": "^2.0.0",
-    "node-pty": "^1.0.0",
-    "@xterm/xterm": "^5.5.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron-is-dev": "^2.0.0",
+    "node-pty": "^1.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
+  "build": {
+    "appId": "com.switchboard.terminal",
+    "productName": "Switchboard",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist/main/main.js"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "npmRebuild": true,
+    "linux": {
+      "target": [
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "snap", "arch": ["x64"] }
+      ],
+      "icon": "build",
+      "category": "Development",
+      "desktop": {
+        "entry": {
+          "Name": "Switchboard",
+          "Comment": "Multi-session terminal manager for AI coding workflows",
+          "Terminal": "false",
+          "Categories": "Development;System;TerminalEmulator;",
+          "Keywords": "terminal;shell;pty;",
+          "StartupWMClass": "Switchboard",
+          "MimeType": "x-scheme-handler/switchboard;"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "afterInstall": "build/after-install.sh"
+    },
+    "snap": {
+      "confinement": "classic",
+      "grade": "devel"
+    }
+  },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^33.2.1",
+    "electron-builder": "^26.8.1",
+    "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "vitest": "^2.1.8",
-    "@testing-library/react": "^16.1.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "jsdom": "^25.0.1"
+    "vitest": "^2.1.8"
   }
 }
