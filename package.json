@@ -2,7 +2,7 @@
   "name": "switchboard",
   "version": "0.1.0",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
-  "main": "dist/main/main.js",
+  "main": "dist/main/main/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
     "dev:renderer": "vite",
@@ -48,7 +48,7 @@
       "package.json"
     ],
     "extraMetadata": {
-      "main": "dist/main/main.js"
+      "main": "dist/main/main/main.js"
     },
     "asar": true,
     "asarUnpack": [

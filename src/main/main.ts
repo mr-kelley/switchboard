@@ -27,7 +27,7 @@ export function createWindow(): BrowserWindow {
   if (isDev) {
     window.loadURL('http://localhost:5173');
   } else {
-    window.loadFile(path.join(__dirname, '../renderer/index.html'));
+    window.loadFile(path.join(__dirname, '../../renderer/index.html'));
   }
 
   return window;
