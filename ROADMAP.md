@@ -23,7 +23,7 @@
 ---
 
 ### 2. Flow
-**Status:** `active`
+**Status:** `completed`
 
 **Outcome:** A developer can process a needs-attention session and submit the next prompt entirely via keyboard. Session management is fast, frictionless, and fully customizable.
 

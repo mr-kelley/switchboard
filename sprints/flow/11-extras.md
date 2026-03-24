@@ -2,7 +2,7 @@
 sprint: 11
 title: Extras — Unread Badges, Terminal Search, Custom CSS, Status Bar
 milestone: Flow
-status: active
+status: completed
 ---
 
 ## Goal
