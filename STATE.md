@@ -1,10 +1,12 @@
 # Project State — Switchboard
 
 ## Project Overview
-Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals, and node-pty backend. Repository: `gits/switchboard`. Current phase: **Core MVP complete**.
+Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals, and node-pty backend. Repository: `gits/switchboard`. Current phase: **Flow (v2) — active**.
 
 ## Active Work
-No active work. Core MVP milestone is complete. Next milestone: Flow (v2).
+- **Milestone:** Flow (v2)
+- **Sprint 07:** Preferences Infrastructure — `sprints/flow/07-preferences-infrastructure.md` — status: active.
+- **Branch:** `work/2026-03-24T000000Z/preferences-infrastructure`
 
 ## Recent Completions
 - Sprint 06: Session Persistence & Notifications — commit `4a8df56` — 2026-03-23.
@@ -16,9 +18,10 @@ No active work. Core MVP milestone is complete. Next milestone: Flow (v2).
 
 ## Project Structure
 - `claude/` — Role files and governance specs.
-- `specs/` — 13 specification files governing implementation.
+- `specs/` — 14+ specification files governing implementation.
 - `decisions/` — Decision log (no decisions logged yet).
 - `sprints/core-mvp/` — 6 completed sprint files.
+- `sprints/flow/` — Flow milestone sprint files.
 - `src/main/` — Electron main process: main.ts, preload.ts, session-manager.ts, ipc-handlers.ts, idle-detector.ts, session-store.ts, notifications.ts.
 - `src/renderer/` — React renderer: App.tsx, main.tsx, index.html.
 - `src/renderer/components/` — TerminalPane, Sidebar, SessionTab, Header, NewSessionModal, ContextMenu.
@@ -33,4 +36,4 @@ No active work. Core MVP milestone is complete. Next milestone: Flow (v2).
 *(none)*
 
 ## Session Notes
-Core MVP milestone complete. All 6 sprints delivered and promoted to main. 99 tests passing across 14 test files. Ready for user testing or to begin Flow (v2) milestone.
+Flow (v2) milestone started. Sprint 07 (Preferences Infrastructure) is active — building the foundational preferences system that all subsequent Flow features depend on.

@@ -16,3 +16,7 @@
 | Idle Detector | `specs/src/main/idle-detector-spec.md` | active |
 | Session Store | `specs/src/main/session-store-spec.md` | active |
 | Notifications | `specs/src/main/notifications-spec.md` | active |
+| Shared Types | `specs/src/shared/types-spec.md` | active |
+| Preferences Store | `specs/src/main/preferences-store-spec.md` | active |
+| Theme Presets | `specs/src/shared/themes-spec.md` | active |
+| Preferences State | `specs/src/renderer/state/preferences-spec.md` | active |

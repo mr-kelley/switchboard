@@ -1,8 +1,8 @@
 ---
 title: Preload Script Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
-domain_tags: [electron, ipc, security]
+domain_tags: [electron, ipc, security, preferences]
 status: active
 governs: src/main/preload.ts
 ---
@@ -30,6 +30,12 @@ interface SwitchboardAPI {
     list(): Promise<SessionInfo[]>;
     onStatusChanged(callback: (sessionId: string, status: string) => void): () => void;
   };
+  preferences: {
+    load(): Promise<SwitchboardPreferences>;
+    save(prefs: SwitchboardPreferences): Promise<void>;
+    reset(): Promise<SwitchboardPreferences>;
+    onChanged(callback: (prefs: SwitchboardPreferences) => void): () => void;
+  };
 }
 ```
 
@@ -44,6 +50,10 @@ interface SwitchboardAPI {
 | `pty.onExit` | `pty:exit` | main → renderer | send/on (event) |
 | `session.list` | `session:list` | renderer → main | invoke/handle |
 | `session.onStatusChanged` | `session:status-changed` | main → renderer | send/on (event) |
+| `preferences.load` | `preferences:load` | renderer → main | invoke/handle |
+| `preferences.save` | `preferences:save` | renderer → main | invoke/handle |
+| `preferences.reset` | `preferences:reset` | renderer → main | invoke/handle |
+| `preferences.onChanged` | `preferences:changed` | main → renderer | send/on (event) |
 
 ## Event Listener Cleanup
 All `on*` methods return an unsubscribe function `() => void`. Callers MUST invoke this on cleanup to prevent memory leaks (e.g., in React useEffect return).

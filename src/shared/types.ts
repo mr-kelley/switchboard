@@ -15,6 +15,88 @@ export interface SessionConfig {
   command?: string;
 }
 
+export interface TerminalThemeColors {
+  background: string;
+  foreground: string;
+  cursor: string;
+  selectionBackground: string;
+  black: string;
+  red: string;
+  green: string;
+  yellow: string;
+  blue: string;
+  magenta: string;
+  cyan: string;
+  white: string;
+  brightBlack: string;
+  brightRed: string;
+  brightGreen: string;
+  brightYellow: string;
+  brightBlue: string;
+  brightMagenta: string;
+  brightCyan: string;
+  brightWhite: string;
+}
+
+export interface UIThemeColors {
+  appBg: string;
+  appText: string;
+  appTextMuted: string;
+  appTextFaint: string;
+  sidebarBg: string;
+  sidebarBorder: string;
+  sidebarHeaderText: string;
+  headerBg: string;
+  headerBorder: string;
+  headerText: string;
+  tabActiveBg: string;
+  tabActiveText: string;
+  tabInactiveText: string;
+  buttonBg: string;
+  buttonText: string;
+  buttonHoverBg: string;
+  buttonPrimaryBg: string;
+  buttonPrimaryText: string;
+  buttonBorder: string;
+  contextMenuBg: string;
+  contextMenuBorder: string;
+  contextMenuText: string;
+  contextMenuHoverBg: string;
+  modalOverlayBg: string;
+  modalBg: string;
+  modalBorder: string;
+  modalText: string;
+  inputBg: string;
+  inputBorder: string;
+  inputText: string;
+  statusWorking: string;
+  statusIdle: string;
+  statusNeedsAttention: string;
+  statusDefault: string;
+  accentPrimary: string;
+  errorText: string;
+}
+
+export interface SwitchboardPreferences {
+  terminalFontFamily: string;
+  terminalFontSize: number;
+  terminalLineHeight: number;
+  uiFontFamily: string;
+  uiFontSize: number;
+  themeName: string;
+  terminalColors: TerminalThemeColors;
+  uiColors: UIThemeColors;
+  terminalBackgroundImage: string | null;
+  terminalBackgroundOpacity: number;
+  sidebarBackgroundImage: string | null;
+  windowOpacity: number;
+  terminalBackgroundAlpha: number;
+  shortcuts: Record<string, string>;
+  sessionOrder: string[];
+  cursorBlink: boolean;
+  scrollbackLines: number;
+}
+
 /** API exposed by the preload script via contextBridge. */
 export interface SwitchboardAPI {
   platform: NodeJS.Platform;
@@ -29,6 +111,12 @@ export interface SwitchboardAPI {
   session: {
     list(): Promise<SessionInfo[]>;
     onStatusChanged(callback: (sessionId: string, status: SessionStatus) => void): () => void;
+  };
+  preferences: {
+    load(): Promise<SwitchboardPreferences>;
+    save(prefs: SwitchboardPreferences): Promise<void>;
+    reset(): Promise<SwitchboardPreferences>;
+    onChanged(callback: (prefs: SwitchboardPreferences) => void): () => void;
   };
 }
 

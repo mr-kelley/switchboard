@@ -23,16 +23,20 @@
 ---
 
 ### 2. Flow
-**Status:** `planned`
+**Status:** `active`
 
-**Outcome:** A developer can process a needs-attention session and submit the next prompt entirely via keyboard. Session management is fast and frictionless.
+**Outcome:** A developer can process a needs-attention session and submit the next prompt entirely via keyboard. Session management is fast, frictionless, and fully customizable.
 
 **Observable conditions:**
-- Keyboard shortcuts for session switching (Cmd/Ctrl+1-9, Cmd/Ctrl+` for next needing attention).
-- System tray integration with badge count.
-- Session templates (save and reuse working directory + command combos).
-- Session groups with collapsible sidebar sections.
-- In-terminal search (Ctrl+F).
+- Preferences system persists user customizations (themes, fonts, shortcuts, layout).
+- Tab reordering via drag-and-drop with persistent order.
+- Keyboard shortcuts for session switching (Ctrl+1-9), session management (Ctrl+N/W), and UI navigation (Ctrl+B sidebar toggle).
+- Full GUI customization: theme presets, custom colors, fonts, background images, transparency.
+- Preferences modal (Ctrl+,) for configuring all visual and behavioral settings.
+- Tab unread badges for background session activity.
+- In-terminal search (Ctrl+Shift+F).
+- Custom CSS injection for power users.
+- Status bar showing session context.
 
 **Dependencies:** Core MVP
 

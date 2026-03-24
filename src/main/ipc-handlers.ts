@@ -2,7 +2,9 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { SessionManager } from './session-manager';
 import { IdleDetector } from './idle-detector';
 import { SessionStore } from './session-store';
+import { PreferencesStore } from './preferences-store';
 import { notifyIfNeeded, isAppFocused } from './notifications';
+import type { SwitchboardPreferences } from '../shared/types';
 
 function broadcast(channel: string, data: unknown): void {
   const windows = BrowserWindow.getAllWindows();
@@ -13,6 +15,7 @@ function broadcast(channel: string, data: unknown): void {
 
 export function registerIpcHandlers(sessionManager: SessionManager): void {
   const sessionStore = new SessionStore();
+  const preferencesStore = new PreferencesStore();
   const idleDetector = new IdleDetector((sessionId, status) => {
     sessionManager.updateStatus(sessionId, status);
     broadcast('session:status-changed', { sessionId, status });
@@ -123,6 +126,24 @@ export function registerIpcHandlers(sessionManager: SessionManager): void {
     } catch {
       // Session may have been closed
     }
+  });
+
+  // preferences:load — load user preferences
+  ipcMain.handle('preferences:load', () => {
+    return preferencesStore.load();
+  });
+
+  // preferences:save — save user preferences and broadcast change
+  ipcMain.handle('preferences:save', (_event, prefs: SwitchboardPreferences) => {
+    preferencesStore.save(prefs);
+    broadcast('preferences:changed', prefs);
+  });
+
+  // preferences:reset — reset to defaults and broadcast change
+  ipcMain.handle('preferences:reset', () => {
+    const defaults = preferencesStore.reset();
+    broadcast('preferences:changed', defaults);
+    return defaults;
   });
 
   // Wire up session manager events to renderer + idle detector

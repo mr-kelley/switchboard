@@ -27,6 +27,12 @@ beforeEach(() => {
       list: vi.fn().mockResolvedValue([]),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
     },
+    preferences: {
+      load: vi.fn().mockResolvedValue({}),
+      save: vi.fn().mockResolvedValue(undefined),
+      reset: vi.fn().mockResolvedValue({}),
+      onChanged: vi.fn().mockReturnValue(() => {}),
+    },
   };
 });
 

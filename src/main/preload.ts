@@ -42,6 +42,24 @@ const api = {
       return () => ipcRenderer.removeListener('session:status-changed', handler);
     },
   },
+  preferences: {
+    load() {
+      return ipcRenderer.invoke('preferences:load');
+    },
+    save(prefs: Record<string, unknown>) {
+      return ipcRenderer.invoke('preferences:save', prefs);
+    },
+    reset() {
+      return ipcRenderer.invoke('preferences:reset');
+    },
+    onChanged(callback: (prefs: Record<string, unknown>) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, prefs: Record<string, unknown>) => {
+        callback(prefs);
+      };
+      ipcRenderer.on('preferences:changed', handler);
+      return () => ipcRenderer.removeListener('preferences:changed', handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('switchboard', api);

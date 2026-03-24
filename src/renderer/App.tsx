@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SessionsProvider, useSessions } from './state/sessions';
+import { PreferencesProvider } from './state/preferences';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import TerminalPane from './components/TerminalPane';
@@ -81,8 +82,10 @@ function AppContent(): React.ReactElement {
 
 export default function App(): React.ReactElement {
   return (
-    <SessionsProvider>
-      <AppContent />
-    </SessionsProvider>
+    <PreferencesProvider>
+      <SessionsProvider>
+        <AppContent />
+      </SessionsProvider>
+    </PreferencesProvider>
   );
 }
