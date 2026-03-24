@@ -1,6 +1,13 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { mockUsePreferences } from '../helpers/mock-preferences';
+
+vi.mock('../../src/renderer/state/preferences', () => ({
+  usePreferences: () => mockUsePreferences,
+  PreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 import Header from '../../src/renderer/components/Header';
 
 describe('Header', () => {

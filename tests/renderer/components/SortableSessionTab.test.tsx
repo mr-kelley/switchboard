@@ -3,6 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { mockUsePreferences } from '../../helpers/mock-preferences';
+
+vi.mock('../../../src/renderer/state/preferences', () => ({
+  usePreferences: () => mockUsePreferences,
+  PreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 import type { SessionInfo } from '../../../src/shared/types';
 import SortableSessionTab from '../../../src/renderer/components/SortableSessionTab';
 

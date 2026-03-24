@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { SessionInfo } from '../../shared/types';
+import { usePreferences } from '../state/preferences';
 
 interface NewSessionModalProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
   const [command, setCommand] = useState('claude');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const { prefs } = usePreferences();
+  const { uiColors } = prefs;
 
   if (!isOpen) return null;
 
@@ -37,7 +40,6 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
         command: command.trim() || undefined,
       });
       onSessionCreated(session);
-      // Reset form
       setName('');
       setCwd('');
       setCommand('claude');
@@ -52,9 +54,9 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
   const inputStyle: React.CSSProperties = {
     width: '100%',
     padding: '8px 10px',
-    backgroundColor: '#313244',
-    color: '#cdd6f4',
-    border: '1px solid #45475a',
+    backgroundColor: uiColors.inputBg,
+    color: uiColors.inputText,
+    border: `1px solid ${uiColors.inputBorder}`,
     borderRadius: 4,
     fontSize: 13,
     outline: 'none',
@@ -64,7 +66,7 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
     display: 'block',
     fontSize: 12,
     fontWeight: 600,
-    color: '#a6adc8',
+    color: uiColors.appTextMuted,
     marginBottom: 4,
   };
 
@@ -75,7 +77,7 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: uiColors.modalOverlayBg,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -86,15 +88,15 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
         data-testid="new-session-modal"
         onClick={(e) => e.stopPropagation()}
         style={{
-          backgroundColor: '#1e1e2e',
-          border: '1px solid #313244',
+          backgroundColor: uiColors.modalBg,
+          border: `1px solid ${uiColors.modalBorder}`,
           borderRadius: 8,
           padding: 24,
           width: 400,
           maxWidth: '90vw',
         }}
       >
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#cdd6f4', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: uiColors.modalText, marginBottom: 20 }}>
           New Session
         </h2>
         <form onSubmit={handleSubmit}>
@@ -133,7 +135,7 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
             />
           </div>
           {error && (
-            <div data-testid="modal-error" style={{ color: '#f38ba8', fontSize: 12, marginBottom: 12 }}>
+            <div data-testid="modal-error" style={{ color: uiColors.errorText, fontSize: 12, marginBottom: 12 }}>
               {error}
             </div>
           )}
@@ -144,8 +146,8 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
               style={{
                 padding: '8px 16px',
                 backgroundColor: 'transparent',
-                color: '#a6adc8',
-                border: '1px solid #45475a',
+                color: uiColors.appTextMuted,
+                border: `1px solid ${uiColors.buttonBorder}`,
                 borderRadius: 4,
                 fontSize: 13,
                 cursor: 'pointer',
@@ -159,8 +161,8 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
               data-testid="submit-session"
               style={{
                 padding: '8px 16px',
-                backgroundColor: '#89b4fa',
-                color: '#1e1e2e',
+                backgroundColor: uiColors.buttonPrimaryBg,
+                color: uiColors.buttonPrimaryText,
                 border: 'none',
                 borderRadius: 4,
                 fontSize: 13,

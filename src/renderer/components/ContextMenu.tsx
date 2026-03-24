@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { usePreferences } from '../state/preferences';
 
 interface MenuItem {
   label: string;
@@ -15,6 +16,8 @@ interface ContextMenuProps {
 
 export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null);
+  const { prefs } = usePreferences();
+  const { uiColors } = prefs;
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -34,8 +37,8 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
         position: 'fixed',
         top: y,
         left: x,
-        backgroundColor: '#313244',
-        border: '1px solid #45475a',
+        backgroundColor: uiColors.contextMenuBg,
+        border: `1px solid ${uiColors.contextMenuBorder}`,
         borderRadius: 6,
         padding: '4px 0',
         minWidth: 160,
@@ -58,18 +61,18 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
             width: '100%',
             padding: '6px 14px',
             backgroundColor: 'transparent',
-            color: '#cdd6f4',
+            color: uiColors.contextMenuText,
             border: 'none',
             fontSize: 13,
             textAlign: 'left',
             cursor: 'pointer',
           }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = '#45475a'; }}
+          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = uiColors.contextMenuHoverBg; }}
           onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'transparent'; }}
         >
           <span>{item.label}</span>
           {item.shortcut && (
-            <span style={{ color: '#6c7086', fontSize: 11, marginLeft: 16 }}>{item.shortcut}</span>
+            <span style={{ color: uiColors.appTextFaint, fontSize: 11, marginLeft: 16 }}>{item.shortcut}</span>
           )}
         </button>
       ))}

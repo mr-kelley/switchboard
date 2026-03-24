@@ -3,34 +3,12 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
+import { usePreferences } from '../state/preferences';
 
 interface TerminalPaneProps {
   sessionId: string;
   visible: boolean;
 }
-
-const TERMINAL_THEME = {
-  background: '#1e1e2e',
-  foreground: '#cdd6f4',
-  cursor: '#f5e0dc',
-  selectionBackground: '#45475a',
-  black: '#45475a',
-  red: '#f38ba8',
-  green: '#a6e3a1',
-  yellow: '#f9e2af',
-  blue: '#89b4fa',
-  magenta: '#f5c2e7',
-  cyan: '#94e2d5',
-  white: '#bac2de',
-  brightBlack: '#585b70',
-  brightRed: '#f38ba8',
-  brightGreen: '#a6e3a1',
-  brightYellow: '#f9e2af',
-  brightBlue: '#89b4fa',
-  brightMagenta: '#f5c2e7',
-  brightCyan: '#94e2d5',
-  brightWhite: '#a6adc8',
-};
 
 function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
   try {
@@ -57,6 +35,7 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
   const webglAddonRef = useRef<{ dispose: () => void } | null>(null);
   const visibleRef = useRef(visible);
   const needsResizeRef = useRef(false);
+  const { prefs } = usePreferences();
 
   // Keep visibility ref in sync
   visibleRef.current = visible;
@@ -65,12 +44,12 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     if (!containerRef.current) return;
 
     const terminal = new Terminal({
-      theme: TERMINAL_THEME,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
-      fontSize: 14,
-      lineHeight: 1.2,
-      cursorBlink: true,
-      scrollback: 5000,
+      theme: prefs.terminalColors,
+      fontFamily: prefs.terminalFontFamily,
+      fontSize: prefs.terminalFontSize,
+      lineHeight: prefs.terminalLineHeight,
+      cursorBlink: prefs.cursorBlink,
+      scrollback: prefs.scrollbackLines,
       allowProposedApi: true,
     });
 
@@ -130,6 +109,27 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     };
   }, [sessionId]);
 
+  // Update terminal options when prefs change
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.theme = prefs.terminalColors;
+    terminal.options.fontFamily = prefs.terminalFontFamily;
+    terminal.options.fontSize = prefs.terminalFontSize;
+    terminal.options.lineHeight = prefs.terminalLineHeight;
+    terminal.options.cursorBlink = prefs.cursorBlink;
+    terminal.options.scrollback = prefs.scrollbackLines;
+    // Re-fit after font change
+    if (visibleRef.current && fitAddonRef.current) {
+      try {
+        fitAddonRef.current.fit();
+        window.switchboard.pty.resize(sessionId, terminal.cols, terminal.rows);
+      } catch {
+        // Ignore
+      }
+    }
+  }, [prefs.terminalColors, prefs.terminalFontFamily, prefs.terminalFontSize, prefs.terminalLineHeight, prefs.cursorBlink, prefs.scrollbackLines, sessionId]);
+
   // Re-fit, re-attach WebGL, and focus when visibility changes
   useEffect(() => {
     if (visible && fitAddonRef.current && terminalRef.current) {
@@ -160,7 +160,6 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
 
   return (
     <div
-      ref={containerRef}
       data-testid={`terminal-pane-${sessionId}`}
       style={{
         display: visible ? 'block' : 'none',
@@ -170,6 +169,35 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
         right: 0,
         bottom: 0,
       }}
-    />
+    >
+      {prefs.terminalBackgroundImage && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: `url(${prefs.terminalBackgroundImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: prefs.terminalBackgroundOpacity,
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}
+        />
+      )}
+      <div
+        ref={containerRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1,
+        }}
+      />
+    </div>
   );
 }

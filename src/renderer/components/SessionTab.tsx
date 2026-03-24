@@ -1,5 +1,6 @@
 import React from 'react';
 import type { SessionInfo } from '../../shared/types';
+import { usePreferences } from '../state/preferences';
 
 interface SessionTabProps {
   session: SessionInfo;
@@ -8,14 +9,17 @@ interface SessionTabProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  working: '#a6e3a1',
-  idle: '#f9e2af',
-  'needs-attention': '#f38ba8',
-};
-
 export default function SessionTab({ session, isActive, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
-  const dotColor = STATUS_COLORS[session.status] || '#6c7086';
+  const { prefs } = usePreferences();
+  const { uiColors } = prefs;
+
+  const statusColors: Record<string, string> = {
+    working: uiColors.statusWorking,
+    idle: uiColors.statusIdle,
+    'needs-attention': uiColors.statusNeedsAttention,
+  };
+
+  const dotColor = statusColors[session.status] || uiColors.statusDefault;
   const needsAttention = session.status === 'needs-attention';
 
   return (
@@ -31,8 +35,8 @@ export default function SessionTab({ session, isActive, onSelect, onContextMenu 
         padding: '8px 12px',
         border: 'none',
         borderRadius: 6,
-        backgroundColor: isActive ? '#313244' : 'transparent',
-        color: isActive ? '#cdd6f4' : '#a6adc8',
+        backgroundColor: isActive ? uiColors.tabActiveBg : 'transparent',
+        color: isActive ? uiColors.tabActiveText : uiColors.tabInactiveText,
         cursor: 'pointer',
         fontSize: 13,
         textAlign: 'left',

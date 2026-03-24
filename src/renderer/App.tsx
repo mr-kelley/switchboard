@@ -6,11 +6,13 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import TerminalPane from './components/TerminalPane';
 import NewSessionModal from './components/NewSessionModal';
+import PreferencesModal from './components/PreferencesModal';
 
 function AppContent(): React.ReactElement {
   const { state, addSession, removeSession, setActiveSession, updateSessionStatus } = useSessions();
   const { prefs, updatePrefs } = usePreferences();
   const [modalOpen, setModalOpen] = useState(false);
+  const [prefsModalOpen, setPrefsModalOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(true);
 
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId) || null;
@@ -69,13 +71,15 @@ function AppContent(): React.ReactElement {
     'session:8': () => selectSessionByIndex(7),
     'session:9': () => selectSessionByIndex(8),
     'app:toggle-sidebar': () => setSidebarVisible((v) => !v),
-    'app:preferences': () => { /* placeholder — PreferencesModal in Sprint 10 */ },
+    'app:preferences': () => setPrefsModalOpen(true),
     'terminal:zoom-in': () => updatePrefs({ terminalFontSize: Math.min(32, prefs.terminalFontSize + 1) }),
     'terminal:zoom-out': () => updatePrefs({ terminalFontSize: Math.max(8, prefs.terminalFontSize - 1) }),
     'terminal:zoom-reset': () => updatePrefs({ terminalFontSize: 14 }),
   }), [closeActiveSession, cycleSession, selectSessionByIndex, prefs.terminalFontSize, updatePrefs]);
 
   useKeyboardShortcuts(prefs.shortcuts, shortcutHandlers);
+
+  const { uiColors } = prefs;
 
   return (
     <div
@@ -84,8 +88,10 @@ function AppContent(): React.ReactElement {
         display: 'flex',
         height: '100vh',
         width: '100vw',
-        backgroundColor: '#1e1e2e',
-        color: '#cdd6f4',
+        backgroundColor: uiColors.appBg,
+        color: uiColors.appText,
+        fontFamily: prefs.uiFontFamily,
+        fontSize: prefs.uiFontSize,
       }}
     >
       {sidebarVisible && <Sidebar />}
@@ -93,6 +99,7 @@ function AppContent(): React.ReactElement {
         <Header
           activeSessionName={activeSession?.name || null}
           onNewSession={() => setModalOpen(true)}
+          onOpenPreferences={() => setPrefsModalOpen(true)}
         />
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {state.sessions.length === 0 ? (
@@ -103,7 +110,7 @@ function AppContent(): React.ReactElement {
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: '#6c7086',
+                color: uiColors.appTextFaint,
                 fontSize: 14,
               }}
             >
@@ -124,6 +131,10 @@ function AppContent(): React.ReactElement {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSessionCreated={(session) => addSession(session)}
+      />
+      <PreferencesModal
+        isOpen={prefsModalOpen}
+        onClose={() => setPrefsModalOpen(false)}
       />
     </div>
   );

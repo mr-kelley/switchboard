@@ -22,3 +22,4 @@
 | Preferences State | `specs/src/renderer/state/preferences-spec.md` | active |
 | Sortable Session Tab | `specs/src/renderer/components/SortableSessionTab-spec.md` | active |
 | Keyboard Shortcuts Hook | `specs/src/renderer/hooks/useKeyboardShortcuts-spec.md` | active |
+| Preferences Modal | `specs/src/renderer/components/PreferencesModal-spec.md` | active |

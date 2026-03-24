@@ -1,6 +1,12 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mockUsePreferences } from '../helpers/mock-preferences';
+
+vi.mock('../../src/renderer/state/preferences', () => ({
+  usePreferences: () => mockUsePreferences,
+  PreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 // Mock xterm.js and addons since they need a real DOM canvas
 vi.mock('@xterm/xterm', () => ({
@@ -13,6 +19,7 @@ vi.mock('@xterm/xterm', () => ({
     focus: vi.fn(),
     cols: 80,
     rows: 24,
+    options: {},
   })),
 }));
 

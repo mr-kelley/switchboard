@@ -19,7 +19,8 @@ interface ContextMenuState {
 
 export default function Sidebar(): React.ReactElement {
   const { state, setActiveSession, removeSession, updateSessionName, reorderSessions } = useSessions();
-  const { updatePrefs } = usePreferences();
+  const { prefs, updatePrefs } = usePreferences();
+  const { uiColors } = prefs;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -68,8 +69,8 @@ export default function Sidebar(): React.ReactElement {
       style={{
         width: 220,
         minWidth: 220,
-        backgroundColor: '#252536',
-        borderRight: '1px solid #313244',
+        backgroundColor: uiColors.sidebarBg,
+        borderRight: `1px solid ${uiColors.sidebarBorder}`,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -82,14 +83,14 @@ export default function Sidebar(): React.ReactElement {
           fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
-          color: '#a6adc8',
+          color: uiColors.sidebarHeaderText,
         }}
       >
         Sessions
       </div>
       <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto' }}>
         {state.sessions.length === 0 ? (
-          <div style={{ padding: '0 8px', fontSize: 13, color: '#6c7086' }}>
+          <div style={{ padding: '0 8px', fontSize: 13, color: uiColors.appTextFaint }}>
             No sessions yet
           </div>
         ) : (
