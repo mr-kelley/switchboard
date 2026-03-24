@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 interface MenuItem {
   label: string;
   action: () => void;
+  shortcut?: string;
 }
 
 interface ContextMenuProps {
@@ -51,7 +52,9 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
             onClose();
           }}
           style={{
-            display: 'block',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             width: '100%',
             padding: '6px 14px',
             backgroundColor: 'transparent',
@@ -64,7 +67,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
           onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = '#45475a'; }}
           onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'transparent'; }}
         >
-          {item.label}
+          <span>{item.label}</span>
+          {item.shortcut && (
+            <span style={{ color: '#6c7086', fontSize: 11, marginLeft: 16 }}>{item.shortcut}</span>
+          )}
         </button>
       ))}
     </div>

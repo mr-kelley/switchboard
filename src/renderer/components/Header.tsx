@@ -26,6 +26,7 @@ export default function Header({ activeSessionName, onNewSession }: HeaderProps)
       <button
         data-testid="new-session-button"
         onClick={onNewSession}
+        title="New Session (Ctrl+N)"
         style={{
           backgroundColor: '#45475a',
           color: '#cdd6f4',

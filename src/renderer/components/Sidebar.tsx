@@ -124,7 +124,7 @@ export default function Sidebar(): React.ReactElement {
           onClose={() => setContextMenu(null)}
           items={[
             { label: 'Rename', action: handleRename },
-            { label: 'Close Session', action: handleClose },
+            { label: 'Close Session', action: handleClose, shortcut: 'Ctrl+W' },
           ]}
         />
       )}
