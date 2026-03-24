@@ -84,12 +84,13 @@ describe('TerminalPane', () => {
     expect(mockResize).toHaveBeenCalledWith('test-session', 80, 24);
   });
 
-  it('uses full width and height', () => {
+  it('uses absolute positioning to fill container', () => {
     const { getByTestId } = render(
       <TerminalPane sessionId="test-session" visible={true} />
     );
     const container = getByTestId('terminal-pane-test-session');
-    expect(container.style.width).toBe('100%');
-    expect(container.style.height).toBe('100%');
+    expect(container.style.position).toBe('absolute');
+    expect(container.style.top).toBe('0px');
+    expect(container.style.bottom).toBe('0px');
   });
 });

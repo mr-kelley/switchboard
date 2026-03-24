@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPaneProps {
   sessionId: string;
@@ -36,8 +37,6 @@ function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
     const { WebglAddon } = require('@xterm/addon-webgl');
     const addon = new WebglAddon();
     addon.onContextLoss(() => {
-      // On context loss, dispose WebGL — xterm falls back to its canvas renderer.
-      // A fresh WebGL addon will be re-attached when the pane becomes visible again.
       try {
         addon.dispose();
       } catch {
@@ -56,7 +55,11 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const webglAddonRef = useRef<{ dispose: () => void } | null>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
+  const visibleRef = useRef(visible);
+  const needsResizeRef = useRef(false);
+
+  // Keep visibility ref in sync
+  visibleRef.current = visible;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -101,8 +104,12 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
       window.switchboard.pty.input(sessionId, data);
     });
 
-    // Handle resize
+    // Handle window resize — only fit if visible, otherwise defer
     const handleResize = () => {
+      if (!visibleRef.current) {
+        needsResizeRef.current = true;
+        return;
+      }
       try {
         fitAddon.fit();
         window.switchboard.pty.resize(sessionId, terminal.cols, terminal.rows);
@@ -116,14 +123,10 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
-    cleanupRef.current = () => {
+    return () => {
       window.removeEventListener('resize', handleResize);
       unsubData();
       terminal.dispose();
-    };
-
-    return () => {
-      cleanupRef.current?.();
     };
   }, [sessionId]);
 
@@ -132,14 +135,20 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
     if (visible && fitAddonRef.current && terminalRef.current) {
       const timer = setTimeout(() => {
         const terminal = terminalRef.current;
-        if (!terminal) return;
+        const fitAddon = fitAddonRef.current;
+        if (!terminal || !fitAddon) return;
 
         try {
           // Re-attach WebGL if it was lost while hidden
           if (!webglAddonRef.current) {
             webglAddonRef.current = tryAttachWebgl(terminal);
           }
-          fitAddonRef.current?.fit();
+
+          // Always fit on visibility change (handles deferred resizes too)
+          fitAddon.fit();
+          window.switchboard.pty.resize(sessionId, terminal.cols, terminal.rows);
+          needsResizeRef.current = false;
+
           terminal.focus();
         } catch {
           // Ignore
@@ -147,7 +156,7 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [visible]);
+  }, [visible, sessionId]);
 
   return (
     <div
@@ -155,8 +164,11 @@ export default function TerminalPane({ sessionId, visible }: TerminalPaneProps):
       data-testid={`terminal-pane-${sessionId}`}
       style={{
         display: visible ? 'block' : 'none',
-        width: '100%',
-        height: '100%',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
       }}
     />
   );
