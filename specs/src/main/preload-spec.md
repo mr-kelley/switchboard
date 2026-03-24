@@ -1,6 +1,6 @@
 ---
 title: Preload Script Specification
-version: 0.1.0
+version: 0.2.0
 maintained_by: claude
 domain_tags: [electron, ipc, security]
 status: active
@@ -17,14 +17,36 @@ The preload script exposes a `switchboard` object on `window` via `contextBridge
 
 ```typescript
 interface SwitchboardAPI {
-  // PTY operations (placeholder for Sprint 02)
-  // Session operations (placeholder for Sprint 04)
-  // Platform info
   platform: NodeJS.Platform;
+  pty: {
+    spawn(config: SessionConfig): Promise<SessionInfo>;
+    resize(sessionId: string, cols: number, rows: number): Promise<void>;
+    close(sessionId: string): Promise<void>;
+    input(sessionId: string, data: string): void;
+    onData(callback: (sessionId: string, data: string) => void): () => void;
+    onExit(callback: (sessionId: string, exitCode: number) => void): () => void;
+  };
+  session: {
+    list(): Promise<SessionInfo[]>;
+    onStatusChanged(callback: (sessionId: string, status: string) => void): () => void;
+  };
 }
 ```
 
-For Sprint 01, the API is minimal — just platform info. It will be extended in subsequent sprints.
+## IPC Channel Mapping
+| API Method | IPC Channel | Direction | Pattern |
+|---|---|---|---|
+| `pty.spawn` | `pty:spawn` | renderer → main | invoke/handle |
+| `pty.resize` | `pty:resize` | renderer → main | invoke/handle |
+| `pty.close` | `pty:close` | renderer → main | invoke/handle |
+| `pty.input` | `pty:input` | renderer → main | send/on (fire-and-forget) |
+| `pty.onData` | `pty:data` | main → renderer | send/on (event stream) |
+| `pty.onExit` | `pty:exit` | main → renderer | send/on (event) |
+| `session.list` | `session:list` | renderer → main | invoke/handle |
+| `session.onStatusChanged` | `session:status-changed` | main → renderer | send/on (event) |
+
+## Event Listener Cleanup
+All `on*` methods return an unsubscribe function `() => void`. Callers MUST invoke this on cleanup to prevent memory leaks (e.g., in React useEffect return).
 
 ## Security Rules
 - MUST use `contextBridge.exposeInMainWorld` exclusively.
@@ -33,8 +55,9 @@ For Sprint 01, the API is minimal — just platform info. It will be extended in
 - Each exposed function MUST validate its arguments before forwarding to ipcRenderer.
 
 # Exports
-- `SwitchboardAPI` type (exported from a shared types file for renderer consumption).
+- `SwitchboardAPI` type (exported from `src/shared/types.ts` for renderer consumption).
 
 # Test Strategy
 - Unit test: verify the API shape exposed via contextBridge.
 - Unit test: verify no prohibited APIs are exposed.
+- Unit test: verify platform info is exposed.

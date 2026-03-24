@@ -1,6 +1,6 @@
 ---
 title: Session Tab Component Specification
-version: 0.1.0
+version: 0.2.0
 maintained_by: claude
 domain_tags: [renderer, react, ui]
 status: active
@@ -23,6 +23,7 @@ interface SessionTabProps {
   session: SessionInfo;
   isActive: boolean;
   onSelect: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 ```
 

@@ -1,6 +1,6 @@
 ---
 title: IPC Handlers Specification
-version: 0.1.0
+version: 0.2.0
 maintained_by: claude
 domain_tags: [electron, ipc, main-process]
 status: active
@@ -8,26 +8,57 @@ governs: src/main/ipc-handlers.ts
 ---
 
 # Purpose
-Register IPC handlers that bridge renderer requests to the SessionManager. All IPC channels follow the `<domain>:<action>` convention.
+Register IPC handlers that bridge renderer requests to the SessionManager. Integrates IdleDetector for status tracking, SessionStore for persistence, and notifications for attention events. All IPC channels follow the `<domain>:<action>` convention.
+
+# Architecture
+
+## Dependencies
+- `SessionManager` — PTY lifecycle management (injected)
+- `IdleDetector` — three-state idle detection (created internally)
+- `SessionStore` — JSON file persistence (created internally)
+- `notifications` — OS-level attention alerts (imported)
+
+## Initialization Flow
+1. Create `SessionStore` and `IdleDetector` instances.
+2. IdleDetector callback: on status change, updates SessionManager, broadcasts `session:status-changed`, fires OS notification if `needs-attention` and app is unfocused.
+3. Restore saved sessions from `SessionStore`. Failed restores (e.g., missing directory) are silently skipped.
+4. Register all IPC handlers.
+5. Wire SessionManager `onData` and `onExit` events to IdleDetector and renderer broadcasts.
+
+## Broadcast Helper
+`broadcast(channel, data)` sends to all open `BrowserWindow` instances via `webContents.send`.
 
 # IPC Channels
 
 ## Renderer → Main (invoke/handle)
-- `pty:spawn` — Create a new PTY session. Args: `{ name, cwd, command? }`. Returns: session metadata.
-- `pty:resize` — Resize a PTY. Args: `{ sessionId, cols, rows }`. Returns: void.
-- `pty:close` — Close a PTY session. Args: `{ sessionId }`. Returns: void.
-- `session:list` — List all sessions. Returns: session metadata array.
+| Channel | Args | Returns | Side Effects |
+|---|---|---|---|
+| `pty:spawn` | `{ name, cwd, command? }` | `SessionInfo` | Adds to IdleDetector, persists sessions |
+| `pty:resize` | `{ sessionId, cols, rows }` | void | — |
+| `pty:close` | `{ sessionId }` | void | Removes from IdleDetector, persists sessions |
+| `session:list` | — | `SessionInfo[]` | — |
+| `session:rename` | `{ sessionId, name }` | void | Broadcasts `session:renamed`, persists sessions |
 
 ## Renderer → Main (send/on)
-- `pty:input` — Send input to a PTY. Args: `{ sessionId, data }`.
+| Channel | Args | Side Effects |
+|---|---|---|
+| `pty:input` | `{ sessionId, data }` | Notifies IdleDetector of user input, writes to PTY |
 
-## Main → Renderer (send)
-- `pty:data` — PTY output data. Args: `{ sessionId, data }`.
-- `pty:exit` — PTY process exited. Args: `{ sessionId, exitCode }`.
+## Main → Renderer (broadcast)
+| Channel | Payload | Trigger |
+|---|---|---|
+| `pty:data` | `{ sessionId, data }` | PTY output received |
+| `pty:exit` | `{ sessionId, exitCode }` | PTY process exited |
+| `session:status-changed` | `{ sessionId, status }` | IdleDetector status transition |
+| `session:renamed` | `{ sessionId, name }` | session:rename handler |
 
 # Validation
-- All handlers MUST validate arguments before forwarding to SessionManager.
-- Invalid arguments result in thrown errors (for handle) or silent drops (for on).
+- All `handle` handlers MUST validate arguments before forwarding to SessionManager. Invalid arguments throw errors.
+- The `on` handler (`pty:input`) silently drops invalid arguments.
+
+# Session Persistence
+- `persistSessions()` helper saves current session configs (name, cwd, command) to `SessionStore` after every spawn, close, exit, and rename.
+- On startup, saved sessions are restored by re-spawning PTYs with the same config.
 
 # Exports
 - `registerIpcHandlers(sessionManager: SessionManager): void`
@@ -35,3 +66,5 @@ Register IPC handlers that bridge renderer requests to the SessionManager. All I
 # Test Strategy
 - Unit test: each handler validates its arguments.
 - Unit test: handlers delegate to SessionManager methods.
+- Unit test: IdleDetector is wired to data and input events.
+- Unit test: session persistence is triggered on spawn/close/exit.
