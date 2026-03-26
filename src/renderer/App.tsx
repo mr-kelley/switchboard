@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { SessionsProvider, useSessions } from './state/sessions';
 import { PreferencesProvider, usePreferences } from './state/preferences';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -27,9 +27,23 @@ function AppContent(): React.ReactElement {
     return unsubExit;
   }, [removeSession]);
 
+  // Track active session ID in a ref so the onData callback always sees current value
+  const activeSessionIdRef = useRef(state.activeSessionId);
+  activeSessionIdRef.current = state.activeSessionId;
+
+  // Grace period after tab switch — ignore output from the tab we just left
+  const switchTimestampRef = useRef(0);
+  useEffect(() => {
+    switchTimestampRef.current = Date.now();
+  }, [state.activeSessionId]);
+
   // Mark background tabs as unread when they receive output
   useEffect(() => {
     const unsubData = window.switchboard.pty.onData((sessionId: string) => {
+      // Skip if this is the active session
+      if (sessionId === activeSessionIdRef.current) return;
+      // Skip output within 200ms of a tab switch (prompt redraw noise)
+      if (Date.now() - switchTimestampRef.current < 200) return;
       markUnread(sessionId);
     });
     return unsubData;
