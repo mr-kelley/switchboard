@@ -23,7 +23,7 @@ export default function StatusBar(): React.ReactElement {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 12px',
-        fontSize: 11,
+        fontSize: '0.85em',
         color: uiColors.appTextFaint,
       }}
     >

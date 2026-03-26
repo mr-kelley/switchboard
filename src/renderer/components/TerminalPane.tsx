@@ -12,6 +12,15 @@ interface TerminalPaneProps {
   onSearchClose?: () => void;
 }
 
+/** Convert a hex color to an rgba() string with the given alpha. */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function tryAttachWebgl(terminal: Terminal): { dispose: () => void } | null {
   try {
     const { WebglAddon } = require('@xterm/addon-webgl');
@@ -58,14 +67,20 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const hasBackgroundImage = !!prefs.terminalBackgroundImage;
+    const theme = hasBackgroundImage
+      ? { ...prefs.terminalColors, background: hexToRgba(prefs.terminalColors.background || '#000000', 1 - prefs.terminalBackgroundOpacity) }
+      : prefs.terminalColors;
+
     const terminal = new Terminal({
-      theme: prefs.terminalColors,
+      theme,
       fontFamily: prefs.terminalFontFamily,
       fontSize: prefs.terminalFontSize,
       lineHeight: prefs.terminalLineHeight,
       cursorBlink: prefs.cursorBlink,
       scrollback: prefs.scrollbackLines,
       allowProposedApi: true,
+      allowTransparency: hasBackgroundImage,
     });
 
     const fitAddon = new FitAddon();
@@ -74,8 +89,8 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
 
     terminal.open(containerRef.current);
 
-    // Attach WebGL after open
-    webglAddonRef.current = tryAttachWebgl(terminal);
+    // Attach WebGL after open (skip if using background image — WebGL doesn't support transparency)
+    webglAddonRef.current = hasBackgroundImage ? null : tryAttachWebgl(terminal);
 
     // Attach search addon
     searchAddonRef.current = tryAttachSearch(terminal);
@@ -125,13 +140,16 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
       unsubData();
       terminal.dispose();
     };
-  }, [sessionId]);
+  }, [sessionId, !!prefs.terminalBackgroundImage]);
 
   // Update terminal options when prefs change
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    terminal.options.theme = prefs.terminalColors;
+    const hasBackgroundImage = !!prefs.terminalBackgroundImage;
+    terminal.options.theme = hasBackgroundImage
+      ? { ...prefs.terminalColors, background: hexToRgba(prefs.terminalColors.background || '#000000', 1 - prefs.terminalBackgroundOpacity) }
+      : prefs.terminalColors;
     terminal.options.fontFamily = prefs.terminalFontFamily;
     terminal.options.fontSize = prefs.terminalFontSize;
     terminal.options.lineHeight = prefs.terminalLineHeight;
@@ -146,7 +164,7 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
         // Ignore
       }
     }
-  }, [prefs.terminalColors, prefs.terminalFontFamily, prefs.terminalFontSize, prefs.terminalLineHeight, prefs.cursorBlink, prefs.scrollbackLines, sessionId]);
+  }, [prefs.terminalColors, prefs.terminalFontFamily, prefs.terminalFontSize, prefs.terminalLineHeight, prefs.cursorBlink, prefs.scrollbackLines, prefs.terminalBackgroundImage, prefs.terminalBackgroundOpacity, sessionId]);
 
   // Re-fit, re-attach WebGL, and focus when visibility changes
   useEffect(() => {

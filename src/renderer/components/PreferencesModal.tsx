@@ -8,7 +8,7 @@ interface PreferencesModalProps {
   onClose: () => void;
 }
 
-type Section = 'theme' | 'font' | 'backgrounds' | 'transparency' | 'shortcuts' | 'terminal';
+type Section = 'theme' | 'font' | 'backgrounds' | 'shortcuts' | 'terminal';
 
 export default function PreferencesModal({ isOpen, onClose }: PreferencesModalProps): React.ReactElement | null {
   const { prefs, updatePrefs, resetPrefs } = usePreferences();
@@ -21,7 +21,6 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
     { key: 'theme', label: 'Theme' },
     { key: 'font', label: 'Font' },
     { key: 'backgrounds', label: 'Backgrounds' },
-    { key: 'transparency', label: 'Transparency' },
     { key: 'shortcuts', label: 'Shortcuts' },
     { key: 'terminal', label: 'Terminal' },
   ];
@@ -226,14 +225,34 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
             {activeSection === 'backgrounds' && (
               <div>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Terminal Background Image (file path)</label>
-                  <input
-                    type="text"
-                    value={prefs.terminalBackgroundImage || ''}
-                    onChange={(e) => updatePrefs({ terminalBackgroundImage: e.target.value || null })}
-                    placeholder="/path/to/image.png"
-                    style={inputStyle}
-                  />
+                  <label style={labelStyle}>Terminal Background Image</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="text"
+                      value={prefs.terminalBackgroundImage || ''}
+                      onChange={(e) => updatePrefs({ terminalBackgroundImage: e.target.value || null })}
+                      placeholder="/path/to/image.png"
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button
+                      onClick={async () => {
+                        const path = await window.switchboard.dialog.openFile();
+                        if (path) updatePrefs({ terminalBackgroundImage: path });
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: uiColors.buttonBg,
+                        color: uiColors.buttonText,
+                        border: `1px solid ${uiColors.buttonBorder}`,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Browse...
+                    </button>
+                  </div>
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <label style={labelStyle}>Terminal Background Opacity ({prefs.terminalBackgroundOpacity.toFixed(1)})</label>
@@ -248,43 +267,34 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
                   />
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Sidebar Background Image (file path)</label>
-                  <input
-                    type="text"
-                    value={prefs.sidebarBackgroundImage || ''}
-                    onChange={(e) => updatePrefs({ sidebarBackgroundImage: e.target.value || null })}
-                    placeholder="/path/to/image.png"
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'transparency' && (
-              <div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Window Opacity ({prefs.windowOpacity.toFixed(1)})</label>
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={1}
-                    step={0.05}
-                    value={prefs.windowOpacity}
-                    onChange={(e) => updatePrefs({ windowOpacity: parseFloat(e.target.value) })}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Terminal Background Alpha ({prefs.terminalBackgroundAlpha.toFixed(1)})</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={prefs.terminalBackgroundAlpha}
-                    onChange={(e) => updatePrefs({ terminalBackgroundAlpha: parseFloat(e.target.value) })}
-                    style={{ width: '100%' }}
-                  />
+                  <label style={labelStyle}>Sidebar Background Image</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="text"
+                      value={prefs.sidebarBackgroundImage || ''}
+                      onChange={(e) => updatePrefs({ sidebarBackgroundImage: e.target.value || null })}
+                      placeholder="/path/to/image.png"
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button
+                      onClick={async () => {
+                        const path = await window.switchboard.dialog.openFile();
+                        if (path) updatePrefs({ sidebarBackgroundImage: path });
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: uiColors.buttonBg,
+                        color: uiColors.buttonText,
+                        border: `1px solid ${uiColors.buttonBorder}`,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Browse...
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

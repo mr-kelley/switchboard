@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { DndContext, closestCenter, DragEndEvent, Modifier } from '@dnd-kit/core';
+import { DndContext, closestCenter, DragEndEvent, Modifier, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { useSessions } from '../state/sessions';
 import { usePreferences } from '../state/preferences';
@@ -23,6 +23,9 @@ export default function Sidebar(): React.ReactElement {
   const { uiColors } = prefs;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   const handleContextMenu = useCallback((sessionId: string, e: React.MouseEvent) => {
     if (isDragging) return;
@@ -74,27 +77,48 @@ export default function Sidebar(): React.ReactElement {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
+      {prefs.sidebarBackgroundImage && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: `url(${prefs.sidebarBackgroundImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.15,
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}
+        />
+      )}
       <div
         style={{
           padding: '16px 14px 12px',
-          fontSize: 12,
+          fontSize: 'inherit',
           fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           color: uiColors.sidebarHeaderText,
+          position: 'relative',
+          zIndex: 1,
         }}
       >
         Sessions
       </div>
-      <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto' }}>
+      <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto', position: 'relative', zIndex: 1 }}>
         {state.sessions.length === 0 ? (
-          <div style={{ padding: '0 8px', fontSize: 13, color: uiColors.appTextFaint }}>
+          <div style={{ padding: '0 8px', fontSize: 'inherit', color: uiColors.appTextFaint }}>
             No sessions yet
           </div>
         ) : (
           <DndContext
+            sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
             onDragStart={() => setIsDragging(true)}

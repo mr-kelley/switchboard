@@ -37,6 +37,14 @@ app.whenReady().then(() => {
   registerIpcHandlers(sessionManager);
   mainWindow = createWindow();
 
+  // Intercept Ctrl+Tab / Ctrl+Shift+Tab before Chromium eats them
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key === 'Tab') {
+      event.preventDefault();
+      mainWindow?.webContents.send('shortcut:cycle-tab', { shift: input.shift });
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow();
