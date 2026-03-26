@@ -53,6 +53,7 @@ Build a highly customized terminal emulator as an Electron desktop application. 
 - MUST maintain **user-facing documentation** per `claude/documentation-spec.md`.
 - MUST maintain the **spec index** (`specs/INDEX.md`) as specs change.
 - MUST implement all six **relational primitives** (see Relational Implementation below).
+- MUST follow **GitHub Issues governance** per `claude/github-issues-spec.md`. This project uses collaborative workflows. Issues are the intake mechanism for external contributions. Roles may read and close Issues via `gh` but MUST NOT create, edit, or triage them. Work driven by Issues must be traceable: PRs reference Issues with closing keywords, sprint files reference Issue numbers, and decision log entries reference Issue numbers when applicable.
 
 ## Terminal-Emulator-Specific Requirements
 
@@ -80,6 +81,7 @@ Reinforcement (MUSTs):
 - Keybindings: declarative, conflict-detected, user-configurable.
 - Hot-reload for themes and config.
 - Platform-specific code behind abstractions.
+- GitHub Issues governance: read/close permitted, create/edit/triage human-only, traceability required.
 
 ## Spec-First Development (Expanded)
 
@@ -140,6 +142,7 @@ Stack choices are defaults. A governing spec may override any entry with justifi
 - Planning artifacts: `claude/planning-spec.md`
 - Project initialization: `claude/project-init-spec.md`
 - User-facing documentation: `claude/documentation-spec.md`
+- GitHub Issues governance: `claude/github-issues-spec.md`
 
 # Outputs
 
