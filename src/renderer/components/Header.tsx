@@ -25,7 +25,7 @@ export default function Header({ activeSessionName, onNewSession, onOpenPreferen
         padding: '0 16px',
       }}
     >
-      <span style={{ fontSize: 14, fontWeight: 600, color: uiColors.headerText }}>
+      <span style={{ fontSize: 'inherit', fontWeight: 600, color: uiColors.headerText }}>
         {activeSessionName || 'Switchboard'}
       </span>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -40,7 +40,7 @@ export default function Header({ activeSessionName, onNewSession, onOpenPreferen
               border: 'none',
               borderRadius: 4,
               padding: '6px 10px',
-              fontSize: 14,
+              fontSize: 'inherit',
               cursor: 'pointer',
             }}
           >
@@ -57,7 +57,7 @@ export default function Header({ activeSessionName, onNewSession, onOpenPreferen
             border: 'none',
             borderRadius: 4,
             padding: '6px 12px',
-            fontSize: 12,
+            fontSize: 'inherit',
             cursor: 'pointer',
           }}
         >

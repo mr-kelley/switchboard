@@ -18,8 +18,6 @@ function getDefaultPreferences(): SwitchboardPreferences {
     terminalBackgroundImage: null,
     terminalBackgroundOpacity: 0.3,
     sidebarBackgroundImage: null,
-    windowOpacity: 1.0,
-    terminalBackgroundAlpha: 1.0,
     shortcuts: {},
     sessionOrder: [],
     cursorBlink: true,

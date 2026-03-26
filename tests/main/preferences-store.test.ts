@@ -111,8 +111,6 @@ describe('PreferencesStore', () => {
     expect(defaults.terminalBackgroundImage).toBeNull();
     expect(defaults.terminalBackgroundOpacity).toBe(0.3);
     expect(defaults.sidebarBackgroundImage).toBeNull();
-    expect(defaults.windowOpacity).toBe(1.0);
-    expect(defaults.terminalBackgroundAlpha).toBe(1.0);
     expect(defaults.shortcuts).toEqual({});
     expect(defaults.sessionOrder).toEqual([]);
     expect(defaults.cursorBlink).toBe(true);

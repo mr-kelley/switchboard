@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { SessionManager } from './session-manager';
 import { IdleDetector } from './idle-detector';
 import { SessionStore } from './session-store';
@@ -144,6 +144,21 @@ export function registerIpcHandlers(sessionManager: SessionManager): void {
     const defaults = preferencesStore.reset();
     broadcast('preferences:changed', defaults);
     return defaults;
+  });
+
+  // dialog:open-file — open a native file picker
+  ipcMain.handle('dialog:open-file', async (_event, args?: { filters?: Electron.FileFilter[] }) => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: args?.filters || [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
   });
 
   // Wire up session manager events to renderer + idle detector

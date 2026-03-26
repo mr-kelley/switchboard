@@ -2,6 +2,18 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 const api = {
   platform: process.platform,
+  dialog: {
+    openFile(filters?: Array<{ name: string; extensions: string[] }>) {
+      return ipcRenderer.invoke('dialog:open-file', filters ? { filters } : undefined);
+    },
+  },
+  onCycleTab(callback: (shift: boolean) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, args: { shift: boolean }) => {
+      callback(args.shift);
+    };
+    ipcRenderer.on('shortcut:cycle-tab', handler);
+    return () => ipcRenderer.removeListener('shortcut:cycle-tab', handler);
+  },
   pty: {
     spawn(config: { name: string; cwd: string; command?: string }) {
       return ipcRenderer.invoke('pty:spawn', config);

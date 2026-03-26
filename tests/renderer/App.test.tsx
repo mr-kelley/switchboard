@@ -17,6 +17,10 @@ vi.mock('@xterm/addon-webgl', () => { throw new Error('No WebGL'); });
 beforeEach(() => {
   (window as any).switchboard = {
     platform: 'linux',
+    dialog: {
+      openFile: vi.fn().mockResolvedValue(null),
+    },
+    onCycleTab: vi.fn().mockReturnValue(() => {}),
     pty: {
       spawn: vi.fn(), resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(), input: vi.fn(),

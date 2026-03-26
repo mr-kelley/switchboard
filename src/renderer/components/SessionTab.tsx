@@ -39,7 +39,7 @@ export default function SessionTab({ session, isActive, hasUnread, onSelect, onC
         backgroundColor: isActive ? uiColors.tabActiveBg : 'transparent',
         color: isActive ? uiColors.tabActiveText : uiColors.tabInactiveText,
         cursor: 'pointer',
-        fontSize: 13,
+        fontSize: 'inherit',
         textAlign: 'left',
         transition: 'background-color 0.15s',
       }}

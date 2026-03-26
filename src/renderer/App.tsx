@@ -109,6 +109,14 @@ function AppContent(): React.ReactElement {
 
   useKeyboardShortcuts(prefs.shortcuts, shortcutHandlers);
 
+  // Listen for Ctrl+Tab / Ctrl+Shift+Tab forwarded from main process
+  useEffect(() => {
+    const unsub = window.switchboard.onCycleTab((shift) => {
+      cycleSession(shift ? -1 : 1);
+    });
+    return unsub;
+  }, [cycleSession]);
+
   const { uiColors } = prefs;
 
   return (

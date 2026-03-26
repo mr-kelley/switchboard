@@ -12,6 +12,10 @@ vi.mock('electron', () => {
     return {
       loadURL: mockLoadURL,
       loadFile: mockLoadFile,
+      webContents: {
+        on: vi.fn(),
+        send: vi.fn(),
+      },
     };
   });
 

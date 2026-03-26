@@ -79,7 +79,7 @@ export default function Sidebar(): React.ReactElement {
       <div
         style={{
           padding: '16px 14px 12px',
-          fontSize: 12,
+          fontSize: 'inherit',
           fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
@@ -90,7 +90,7 @@ export default function Sidebar(): React.ReactElement {
       </div>
       <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto' }}>
         {state.sessions.length === 0 ? (
-          <div style={{ padding: '0 8px', fontSize: 13, color: uiColors.appTextFaint }}>
+          <div style={{ padding: '0 8px', fontSize: 'inherit', color: uiColors.appTextFaint }}>
             No sessions yet
           </div>
         ) : (

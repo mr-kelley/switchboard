@@ -89,8 +89,6 @@ export interface SwitchboardPreferences {
   terminalBackgroundImage: string | null;
   terminalBackgroundOpacity: number;
   sidebarBackgroundImage: string | null;
-  windowOpacity: number;
-  terminalBackgroundAlpha: number;
   shortcuts: Record<string, string>;
   sessionOrder: string[];
   cursorBlink: boolean;
@@ -101,6 +99,10 @@ export interface SwitchboardPreferences {
 /** API exposed by the preload script via contextBridge. */
 export interface SwitchboardAPI {
   platform: NodeJS.Platform;
+  dialog: {
+    openFile(filters?: Array<{ name: string; extensions: string[] }>): Promise<string | null>;
+  };
+  onCycleTab(callback: (shift: boolean) => void): () => void;
   pty: {
     spawn(config: SessionConfig): Promise<SessionInfo>;
     resize(sessionId: string, cols: number, rows: number): Promise<void>;
