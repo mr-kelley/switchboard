@@ -77,8 +77,26 @@ export default function Sidebar(): React.ReactElement {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
+      {prefs.sidebarBackgroundImage && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: `url(${prefs.sidebarBackgroundImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.15,
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}
+        />
+      )}
       <div
         style={{
           padding: '16px 14px 12px',
@@ -87,11 +105,13 @@ export default function Sidebar(): React.ReactElement {
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           color: uiColors.sidebarHeaderText,
+          position: 'relative',
+          zIndex: 1,
         }}
       >
         Sessions
       </div>
-      <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto' }}>
+      <div style={{ flex: 1, padding: '0 6px', overflowY: 'auto', position: 'relative', zIndex: 1 }}>
         {state.sessions.length === 0 ? (
           <div style={{ padding: '0 8px', fontSize: 'inherit', color: uiColors.appTextFaint }}>
             No sessions yet
