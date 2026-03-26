@@ -32,3 +32,6 @@ coverage/
 # Logs
 *.log
 npm-debug.log*
+
+# Issue drafts (local working directory)
+.issues/
