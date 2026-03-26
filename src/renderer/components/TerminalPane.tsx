@@ -140,7 +140,7 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
       unsubData();
       terminal.dispose();
     };
-  }, [sessionId]);
+  }, [sessionId, !!prefs.terminalBackgroundImage]);
 
   // Update terminal options when prefs change
   useEffect(() => {
