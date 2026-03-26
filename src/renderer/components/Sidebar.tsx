@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { DndContext, closestCenter, DragEndEvent, Modifier } from '@dnd-kit/core';
+import { DndContext, closestCenter, DragEndEvent, Modifier, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { useSessions } from '../state/sessions';
 import { usePreferences } from '../state/preferences';
@@ -23,6 +23,9 @@ export default function Sidebar(): React.ReactElement {
   const { uiColors } = prefs;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   const handleContextMenu = useCallback((sessionId: string, e: React.MouseEvent) => {
     if (isDragging) return;
@@ -95,6 +98,7 @@ export default function Sidebar(): React.ReactElement {
           </div>
         ) : (
           <DndContext
+            sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
             onDragStart={() => setIsDragging(true)}
