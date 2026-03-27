@@ -105,10 +105,37 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
     // Send initial dimensions to PTY
     window.switchboard.pty.resize(sessionId, terminal.cols, terminal.rows);
 
-    // Wire up data flow
+    // Wire up data flow — buffer rapid PTY output and flush once per frame
+    // to avoid scroll-position resets during high-throughput streaming (GH-12).
+    //
+    // xterm.js has a built-in `isUserScrolling` flag (BufferService) that
+    // prevents auto-scroll on new content when the user has scrolled up.
+    // It tracks this via `scrollLines()`: scroll-up sets the flag, and
+    // scrolling to ybase clears it. We MUST NOT call `scrollToBottom()`
+    // from write callbacks because it clears `isUserScrolling` via
+    // `scrollLines(ybase - ydisp)`, creating a race where a previous
+    // frame's callback resets the flag after the user scrolls up.
+    //
+    // The only job of our buffer layer is to batch rapid IPC data chunks
+    // into one write per animation frame to reduce DOM thrashing.
+    let dataBuffer = '';
+    let flushScheduled = false;
+
+    const flushBuffer = () => {
+      flushScheduled = false;
+      if (!dataBuffer) return;
+      const chunk = dataBuffer;
+      dataBuffer = '';
+      terminal.write(chunk);
+    };
+
     const unsubData = window.switchboard.pty.onData((sid: string, data: string) => {
       if (sid === sessionId) {
-        terminal.write(data);
+        dataBuffer += data;
+        if (!flushScheduled) {
+          flushScheduled = true;
+          requestAnimationFrame(flushBuffer);
+        }
       }
     });
 
