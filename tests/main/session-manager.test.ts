@@ -93,8 +93,8 @@ describe('SessionManager', () => {
       expect(() => manager.resize(session.id, 1.5, 40)).toThrow('Invalid dimensions');
     });
 
-    it('throws for unknown session ID', () => {
-      expect(() => manager.resize('nonexistent', 80, 24)).toThrow('Session not found');
+    it('silently returns for unknown session ID', () => {
+      expect(() => manager.resize('nonexistent', 80, 24)).not.toThrow();
     });
   });
 

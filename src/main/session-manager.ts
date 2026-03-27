@@ -87,7 +87,8 @@ export class SessionManager {
     }
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error(`Session not found: ${sessionId}`);
+      // Session may have exited between renderer's resize request and now
+      return;
     }
     session.pty.resize(cols, rows);
   }
