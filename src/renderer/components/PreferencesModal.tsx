@@ -1,14 +1,207 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences } from '../state/preferences';
 import { THEME_PRESETS } from '../../shared/themes';
 import { DEFAULT_SHORTCUTS } from '../hooks/useKeyboardShortcuts';
+
+function parseConnectionString(connStr: string): { host: string; port: number; token: string; fingerprint: string } | null {
+  try {
+    // switchboard://host:port?token=xxx&fingerprint=yyy
+    const cleaned = connStr.trim().replace('switchboard://', 'https://');
+    const url = new URL(cleaned);
+    const host = url.hostname;
+    const port = parseInt(url.port, 10);
+    const token = url.searchParams.get('token') || '';
+    const fingerprint = url.searchParams.get('fingerprint') || '';
+    if (!host || !port || !token) return null;
+    return { host, port, token, fingerprint };
+  } catch {
+    return null;
+  }
+}
+
+interface DaemonStatus {
+  id: string;
+  name: string;
+  status: string;
+  sessionCount: number;
+}
+
+function DaemonSection({ uiColors, inputStyle, labelStyle }: {
+  uiColors: Record<string, string>;
+  inputStyle: React.CSSProperties;
+  labelStyle: React.CSSProperties;
+}): React.ReactElement {
+  const [connStr, setConnStr] = useState('');
+  const [daemonName, setDaemonName] = useState('');
+  const [error, setError] = useState('');
+  const [statuses, setStatuses] = useState<DaemonStatus[]>([]);
+
+  const refreshStatuses = useCallback(async () => {
+    try {
+      const s = await window.switchboard.daemon.statuses();
+      setStatuses(s);
+    } catch {
+      // Daemon API may not be available
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshStatuses();
+    const interval = setInterval(refreshStatuses, 3000);
+    return () => clearInterval(interval);
+  }, [refreshStatuses]);
+
+  const handleAdd = async () => {
+    setError('');
+    if (!daemonName.trim()) {
+      setError('Name is required');
+      return;
+    }
+    const parsed = parseConnectionString(connStr);
+    if (!parsed) {
+      setError('Invalid connection string. Paste the string from daemon output.');
+      return;
+    }
+    const id = `daemon-${Date.now()}`;
+    try {
+      await window.switchboard.daemon.add({
+        id,
+        name: daemonName.trim(),
+        host: parsed.host,
+        port: parsed.port,
+        token: parsed.token,
+        fingerprint: parsed.fingerprint,
+        autoConnect: true,
+      });
+      await window.switchboard.daemon.connect(id);
+      setConnStr('');
+      setDaemonName('');
+      refreshStatuses();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add daemon');
+    }
+  };
+
+  const handleDisconnect = async (daemonId: string) => {
+    await window.switchboard.daemon.disconnect(daemonId);
+    refreshStatuses();
+  };
+
+  const handleConnect = async (daemonId: string) => {
+    await window.switchboard.daemon.connect(daemonId);
+    refreshStatuses();
+  };
+
+  const handleRemove = async (daemonId: string) => {
+    await window.switchboard.daemon.remove(daemonId);
+    refreshStatuses();
+  };
+
+  const statusColor = (status: string) => {
+    if (status === 'connected') return uiColors.statusWorking;
+    if (status === 'reconnecting' || status === 'connecting' || status === 'authenticating') return uiColors.statusIdle;
+    return uiColors.statusDefault;
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 12 }}>
+        Connect to Switchboard daemons running on this machine or remote hosts.
+      </div>
+
+      {statuses.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Connected Daemons</label>
+          {statuses.map((d) => (
+            <div key={d.id} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 8px', marginBottom: 4,
+              backgroundColor: uiColors.inputBg, borderRadius: 4,
+            }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                backgroundColor: statusColor(d.status), flexShrink: 0,
+              }} />
+              <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>{d.name}</span>
+              <span style={{ fontSize: 11, color: uiColors.appTextMuted }}>{d.status} ({d.sessionCount} sessions)</span>
+              {d.status === 'connected' ? (
+                <button onClick={() => handleDisconnect(d.id)} style={{
+                  padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
+                  color: uiColors.appTextMuted, border: `1px solid ${uiColors.inputBorder}`,
+                  borderRadius: 3, cursor: 'pointer',
+                }}>Disconnect</button>
+              ) : d.status === 'disconnected' ? (
+                <>
+                  <button onClick={() => handleConnect(d.id)} style={{
+                    padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
+                    color: uiColors.appTextMuted, border: `1px solid ${uiColors.inputBorder}`,
+                    borderRadius: 3, cursor: 'pointer',
+                  }}>Connect</button>
+                  <button onClick={() => handleRemove(d.id)} style={{
+                    padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
+                    color: uiColors.errorText, border: `1px solid ${uiColors.errorText}`,
+                    borderRadius: 3, cursor: 'pointer',
+                  }}>Remove</button>
+                </>
+              ) : (
+                <span style={{ fontSize: 11, color: uiColors.appTextFaint }}>...</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Daemon Name</label>
+        <input
+          type="text"
+          value={daemonName}
+          onChange={(e) => setDaemonName(e.target.value)}
+          placeholder="e.g. localhost, lab-vm, server-1"
+          style={inputStyle}
+        />
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Connection String</label>
+        <input
+          type="text"
+          value={connStr}
+          onChange={(e) => setConnStr(e.target.value)}
+          placeholder="switchboard://host:port?token=...&fingerprint=..."
+          style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 11 }}
+        />
+        <div style={{ fontSize: 11, color: uiColors.appTextFaint, marginTop: 4 }}>
+          Paste the connection string from the daemon's startup output.
+        </div>
+      </div>
+      {error && (
+        <div style={{ color: uiColors.errorText, fontSize: 12, marginBottom: 12 }}>{error}</div>
+      )}
+      <button
+        onClick={handleAdd}
+        style={{
+          padding: '6px 14px',
+          backgroundColor: uiColors.buttonPrimaryBg,
+          color: uiColors.buttonPrimaryText,
+          border: 'none',
+          borderRadius: 4,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        Add &amp; Connect
+      </button>
+    </div>
+  );
+}
 
 interface PreferencesModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type Section = 'theme' | 'font' | 'backgrounds' | 'shortcuts' | 'terminal';
+type Section = 'theme' | 'font' | 'backgrounds' | 'shortcuts' | 'terminal' | 'daemons';
 
 export default function PreferencesModal({ isOpen, onClose }: PreferencesModalProps): React.ReactElement | null {
   const { prefs, updatePrefs, resetPrefs } = usePreferences();
@@ -23,6 +216,7 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
     { key: 'backgrounds', label: 'Backgrounds' },
     { key: 'shortcuts', label: 'Shortcuts' },
     { key: 'terminal', label: 'Terminal' },
+    { key: 'daemons', label: 'Daemons' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -362,6 +556,10 @@ export default function PreferencesModal({ isOpen, onClose }: PreferencesModalPr
                   />
                 </div>
               </div>
+            )}
+
+            {activeSection === 'daemons' && (
+              <DaemonSection uiColors={uiColors} inputStyle={inputStyle} labelStyle={labelStyle} />
             )}
           </div>
         </div>
