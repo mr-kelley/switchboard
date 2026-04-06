@@ -36,7 +36,7 @@ At full maturity, it feels less like a terminal emulator and more like a mission
 
 5. **Extensible by design.** Prompt pattern detection, session defaults, keyboard shortcuts, themes — all configurable. Don't bake in assumptions that break for different tools or workflows.
 
-6. **Local-first, always.** No telemetry, no accounts, no cloud. Sessions and configuration live on the user's machine.
+6. **Your infrastructure, your control.** No telemetry, no accounts, no cloud services. Sessions run on your machines — workstations, VMs, lab servers — connected by daemons you control. Configuration is local per client.
 
 ---
 
@@ -62,36 +62,69 @@ At full maturity, it feels less like a terminal emulator and more like a mission
 ### v2 — Flow
 *Goal: Reduce the friction of acting on sessions, not just noticing them.*
 
-- **Queued prompts per session:** A small input area per tab where you can pre-stage your next prompt before the session is ready. One click to fire when the dot goes red.
-- **Keyboard shortcuts:** Cmd/Ctrl+1 through Cmd/Ctrl+9 to jump directly to sessions by position. Cmd/Ctrl+` to cycle to the next session needing attention.
-- **System tray integration:** Badge showing count of sessions awaiting input. Click tray icon to bring app to focus.
-- **Session templates:** Save a working directory + command as a named template. New sessions can be spun up from templates in two clicks.
-- **Session groups:** Organize sessions into named groups (e.g. by project or client) with collapsible group headers in the sidebar.
-- **Output search:** Ctrl+F within any terminal pane.
+- Preferences system with theme presets, custom colors, fonts, background images
+- Keyboard shortcuts for session switching, management, and UI navigation
+- Tab reordering via drag-and-drop with persistent order
+- Full GUI customization via Preferences modal
+- Tab unread badges, in-terminal search, custom CSS injection, status bar
 
 **Success metric:** A developer can process a "needs attention" session and submit the next prompt without touching the mouse.
 
 ---
 
-### v3 — Intelligence
+### v3 — Daemon
+*Goal: Decouple session lifecycle from the desktop app. Sessions run on daemons; clients connect from anywhere.*
+
+The current architecture is monolithic: the Electron app owns the PTYs directly. This means closing the app kills all sessions, sessions can't be accessed from another machine, and remote development requires manual SSH workarounds.
+
+v3 introduces a **client-server split**:
+
+- **Switchboard daemon** (`switchboard-daemon`): a standalone process that runs on any host (workstations, VMs, lab servers). It owns PTY lifecycle, idle detection, and output history. Multiple daemons can run on different hosts.
+- **Switchboard client** (the Electron app): connects to one or more daemons via WebSocket + TLS. Renders terminals, manages UI, handles notifications. The client no longer spawns PTYs directly — all sessions are daemon-managed, including localhost.
+- **Session mobility**: close the client on one machine, open it on another, reconnect to the same daemons. All sessions are still running with full output history.
+- **Network resilience**: auto-reconnect with backoff. Connection status visible per daemon. Designed for use over VPN/Wireguard tunnels.
+- **Authentication**: token-based auth to start (daemon generates a shared secret). Extensible to certificate-based or organizational auth later.
+- **Full history replay**: daemon buffers all session output (configurable cap). On client connect or reconnect, the buffer replays so the user sees everything that happened while disconnected.
+
+**Success metric:** A developer can start a session on a lab VM, close their laptop, travel to another location, open the client, and resume the session with full history — without the session ever stopping.
+
+---
+
+### v4 — Flow II
+*Goal: Client-side UX enhancements that reduce friction further.*
+
+These features were envisioned in the original v2 but deferred. They sit on top of the daemon architecture and enhance the client experience.
+
+- **Queued prompts per session**: pre-stage the next prompt while a session is still working; fire it with one action when the session needs attention.
+- **System tray integration**: tray icon with badge showing count of sessions awaiting input across all connected daemons.
+- **Session templates**: save a host + working directory + command as a named template for one-click session creation.
+- **Session groups**: organize sessions by host, project, or custom grouping with collapsible sidebar headers. Multi-host connections provide natural grouping.
+- **Notification routing**: per-session notification preferences (high priority, normal, silent).
+
+**Success metric:** A developer managing 8+ sessions across multiple hosts can create, organize, and respond to sessions entirely via keyboard, with attention routed to what matters most.
+
+---
+
+### v5 — Intelligence
 *Goal: Let Switchboard understand what's happening in sessions, not just that something happened.*
 
-- **Status inference:** Use lightweight heuristics (or optional local LLM) to infer more session states — e.g., "blocked waiting for confirmation," "encountered an error," "completed successfully" — and surface these as richer status labels alongside the dot.
-- **Session timeline:** Per-session log of prompt/response cycles with timestamps. Lightweight activity history without storing full terminal output.
-- **Cross-session context:** Optional "project notes" pane per session — a scratchpad visible alongside the terminal for tracking decisions, next steps, open questions.
-- **Notification routing:** Configure per-session notification preferences. Some sessions are high priority; others can accumulate silently.
-- **Plugin API:** Expose session lifecycle events (session-ready, session-working, output-received) so third-party tools can hook into Switchboard — e.g., time trackers, project management integrations, webhook triggers.
+Intelligence features run daemon-side, where the PTY output stream lives. The daemon has the data; the client renders the insights.
 
-**Success metric:** A developer looking at the Switchboard sidebar can understand the state of all their work without reading any terminal output.
+- **Status inference**: lightweight heuristics to infer richer session states — blocked, errored, completed successfully — displayed as labels alongside the status dot.
+- **Session timeline**: per-session log of prompt/response cycles with timestamps. Persistent activity history on the daemon.
+- **Cross-session notes**: per-session scratchpad stored on the daemon, visible alongside the terminal. Notes follow the session across clients.
+- **Plugin API**: expose session lifecycle events (session-ready, session-working, output-received) from the daemon for third-party integrations.
+
+**Success metric:** A developer looking at the Switchboard sidebar can understand the state of all their work across all their hosts without reading any terminal output.
 
 ---
 
 ## What This Is Not
 
-- A remote terminal manager / SSH client (there are good tools for that)
-- A tmux replacement for general-purpose terminal use
 - An AI agent itself (Switchboard manages sessions; it doesn't run them)
-- A cloud or SaaS product
+- A cloud or SaaS product (daemons run on your infrastructure, not ours)
+- An SSH client (the daemon runs where the PTYs are; no SSH tunneling of terminal streams)
+- A general-purpose terminal multiplexer (Switchboard is purpose-built for parallel AI agent workflows)
 
 ---
 
@@ -99,12 +132,15 @@ At full maturity, it feels less like a terminal emulator and more like a mission
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Desktop shell | Electron | Mature, well-documented, Linux-native, same stack as VS Code's terminal |
+| Client shell | Electron | Mature, well-documented, Linux-native, same stack as VS Code's terminal |
 | Terminal renderer | xterm.js | Production-grade, used in VS Code; handles 8+ instances cleanly |
+| Daemon runtime | Node.js | Same language as client; node-pty native module for PTY management |
 | PTY management | node-pty | Real pseudoterminals; clean stream access for idle detection |
+| Transport | WebSocket + TLS | Bidirectional, works over VPN tunnels, well-supported in Node.js |
 | UI | React | Component model maps cleanly to session/tab/pane structure |
-| Session state | Local JSON | No dependencies, survives restarts, human-readable |
-| Packaging | electron-builder | AppImage + deb targets for Linux |
+| Client state | Local JSON | Preferences, connection configs — per-workstation |
+| Daemon state | Local JSON + ring buffer | Session metadata + output history — per-host |
+| Packaging | electron-builder (client), npm (daemon) | AppImage for client; daemon is a standalone Node.js process |
 
 **Critical implementation note:** xterm.js instances for background tabs must never be unmounted. Tab switching is a CSS `display` swap only. Destroying and recreating terminal instances on switch loses scroll history and breaks session continuity.
 
@@ -118,4 +154,4 @@ License: MIT
 
 ---
 
-*Last updated: 2026-03-23*
+*Last updated: 2026-04-06*
