@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.3.0-rc.5",
+  "version": "0.3.0-rc.6",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
   "main": "dist/main/main/main.js",
   "scripts": {
