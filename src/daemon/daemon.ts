@@ -71,6 +71,7 @@ export class Daemon {
 
     // Transport server
     const daemonId = randomUUID();
+    const fingerprint = getCertFingerprint(this.config.tls.cert);
     this.transport = new TransportServer(
       {
         port: this.config.port,
@@ -80,6 +81,7 @@ export class Daemon {
         daemonId,
         hostname: os.hostname(),
         version: VERSION,
+        fingerprint,
       },
       (conn, msg) => this.handleMessage(conn, msg)
     );

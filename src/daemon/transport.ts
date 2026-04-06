@@ -1,4 +1,5 @@
 import * as https from 'https';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { validateToken } from './auth';
@@ -27,6 +28,7 @@ export interface TransportConfig {
   daemonId: string;
   hostname: string;
   version: string;
+  fingerprint: string;
 }
 
 export interface ClientConnection {
@@ -36,6 +38,7 @@ export interface ClientConnection {
   seq: SequenceCounter;
   lastPong: number;
   lastClientSeq: number;
+  pairingCode: string | null;
 }
 
 export type MessageHandler = (conn: ClientConnection, msg: ClientMessage) => void;
@@ -159,6 +162,7 @@ export class TransportServer {
       seq: new SequenceCounter(),
       lastPong: Date.now(),
       lastClientSeq: 0,
+      pairingCode: null,
     };
 
     this.connections.set(connId, conn);
@@ -181,6 +185,11 @@ export class TransportServer {
           if (msg.type === 'auth') {
             clearTimeout(authTimer);
             this.handleAuth(conn, msg.token);
+          } else if (msg.type === 'pair:request') {
+            clearTimeout(authTimer);
+            this.handlePairRequest(conn, (msg as any).clientName || 'unknown');
+          } else if (msg.type === 'pair:response') {
+            this.handlePairResponse(conn, (msg as any).code || '');
           } else {
             this.send(connId, { type: 'auth:fail', reason: 'Must authenticate first' });
             ws.close(4001, 'Not authenticated');
@@ -235,6 +244,71 @@ export class TransportServer {
       setTimeout(() => {
         this.send(conn.id, { type: 'auth:fail', reason: 'Invalid token' });
         conn.ws.close(4003, 'Auth failed');
+      }, 200);
+    }
+  }
+
+  private handlePairRequest(conn: ClientConnection, clientName: string): void {
+    // Generate a 6-digit pairing code
+    const code = crypto.randomInt(100000, 999999).toString();
+    conn.pairingCode = code;
+
+    console.log(`\n=== PAIRING REQUEST ===`);
+    console.log(`Client "${clientName}" wants to pair.`);
+    console.log(`Pairing code: ${code}`);
+    console.log(`Enter this code in the client to complete pairing.`);
+    console.log(`======================\n`);
+
+    // Send challenge to client
+    this.send(conn.id, {
+      type: 'pair:challenge',
+      daemonName: this.config.hostname,
+      hostname: this.config.hostname,
+    });
+
+    // Timeout pairing after 60 seconds
+    setTimeout(() => {
+      if (conn.pairingCode) {
+        conn.pairingCode = null;
+        this.send(conn.id, { type: 'pair:fail', reason: 'Pairing timed out' });
+        conn.ws.close(4002, 'Pairing timeout');
+      }
+    }, 60_000);
+  }
+
+  private handlePairResponse(conn: ClientConnection, code: string): void {
+    if (!conn.pairingCode) {
+      this.send(conn.id, { type: 'pair:fail', reason: 'No pairing in progress' });
+      conn.ws.close(4002, 'No pairing');
+      return;
+    }
+
+    if (code === conn.pairingCode) {
+      conn.pairingCode = null;
+      console.log(`Pairing successful!`);
+      // Send the auth token to the client
+      this.send(conn.id, {
+        type: 'pair:token',
+        token: this.config.token,
+        daemonId: this.config.daemonId,
+        hostname: this.config.hostname,
+        fingerprint: this.config.fingerprint,
+      });
+      // Also authenticate this connection
+      conn.authenticated = true;
+      this.send(conn.id, {
+        type: 'auth:ok',
+        daemonId: this.config.daemonId,
+        hostname: this.config.hostname,
+        version: this.config.version,
+      });
+      this.onConnect?.(conn);
+    } else {
+      conn.pairingCode = null;
+      console.log(`Pairing failed — wrong code.`);
+      setTimeout(() => {
+        this.send(conn.id, { type: 'pair:fail', reason: 'Invalid pairing code' });
+        conn.ws.close(4003, 'Pairing failed');
       }, 200);
     }
   }

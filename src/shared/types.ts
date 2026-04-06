@@ -124,6 +124,11 @@ export interface SwitchboardAPI {
     statuses(): Promise<Array<{ id: string; name: string; status: string; sessionCount: number }>>;
     onStatusChanged(callback: (daemonId: string, name: string, status: string) => void): () => void;
     onConnected(callback: (daemonId: string, name: string) => void): () => void;
+    pair(host: string, port: number, clientName: string): Promise<void>;
+    submitCode(code: string): Promise<void>;
+    onPairChallenge(callback: (daemonName: string) => void): () => void;
+    onPairSuccess(callback: (name: string) => void): () => void;
+    onPairFailed(callback: (reason: string) => void): () => void;
   };
   preferences: {
     load(): Promise<SwitchboardPreferences>;

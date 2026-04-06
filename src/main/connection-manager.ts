@@ -254,6 +254,95 @@ export class ConnectionManager {
     return this.connections.size > 0;
   }
 
+  // --- Pairing ---
+
+  private pairingWs: WebSocket | null = null;
+  private pairingHost = '';
+  private pairingPort = 0;
+
+  /**
+   * Initiate pairing with a daemon. Opens a WebSocket, sends pair:request,
+   * and waits for the daemon to issue a challenge.
+   */
+  async pair(host: string, port: number, clientName: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`wss://${host}:${port}`, {
+        rejectUnauthorized: false,
+      });
+
+      this.pairingWs = ws;
+      this.pairingHost = host;
+      this.pairingPort = port;
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'pair:request', seq: 1, clientName }));
+      });
+
+      ws.on('message', (rawData) => {
+        try {
+          const msg = JSON.parse(rawData.toString());
+
+          if (msg.type === 'pair:challenge') {
+            broadcast('daemon:pair-challenge', {
+              host, port,
+              daemonName: msg.daemonName || msg.hostname,
+            });
+            resolve(); // Pairing initiated — now waiting for user to enter code
+          } else if (msg.type === 'pair:token') {
+            // Got the token — save it and wait for auth:ok
+            this.handlePairToken(host, port, msg);
+          } else if (msg.type === 'auth:ok') {
+            // Pairing + auth complete — close pairing WS, connect normally
+            ws.close();
+          } else if (msg.type === 'pair:fail') {
+            broadcast('daemon:pair-failed', { reason: msg.reason });
+            ws.close();
+          }
+        } catch {
+          // Ignore
+        }
+      });
+
+      ws.on('error', (err) => {
+        this.pairingWs = null;
+        reject(new Error(`Failed to connect to ${host}:${port}: ${err.message}`));
+      });
+
+      ws.on('close', () => {
+        this.pairingWs = null;
+      });
+    });
+  }
+
+  /**
+   * Submit the pairing code entered by the user.
+   */
+  submitPairingCode(code: string): void {
+    if (!this.pairingWs || this.pairingWs.readyState !== WebSocket.OPEN) {
+      broadcast('daemon:pair-failed', { reason: 'No pairing in progress' });
+      return;
+    }
+    this.pairingWs.send(JSON.stringify({ type: 'pair:response', seq: 2, code }));
+  }
+
+  private handlePairToken(host: string, port: number, msg: any): void {
+    const config: DaemonConnectionConfig = {
+      id: msg.daemonId || `daemon-${Date.now()}`,
+      name: msg.hostname || `${host}:${port}`,
+      host,
+      port,
+      token: msg.token,
+      fingerprint: msg.fingerprint || '',
+      autoConnect: true,
+    };
+
+    broadcast('daemon:pair-success', { name: config.name });
+
+    // Add and connect through the normal path
+    this.addConnection(config);
+    this.connect(config.id);
+  }
+
   // --- Message handling ---
 
   private handleDaemonMessage(conn: ManagedConnection, msg: DaemonMessage): void {

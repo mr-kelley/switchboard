@@ -69,6 +69,16 @@ export interface PingMessage extends BaseMessage {
   type: 'ping';
 }
 
+export interface PairRequestMessage extends BaseMessage {
+  type: 'pair:request';
+  clientName: string;
+}
+
+export interface PairResponseMessage extends BaseMessage {
+  type: 'pair:response';
+  code: string;
+}
+
 export type ClientMessage =
   | AuthMessage
   | SessionSpawnMessage
@@ -77,7 +87,9 @@ export type ClientMessage =
   | SessionCloseMessage
   | SessionRenameMessage
   | SessionListRequestMessage
-  | PingMessage;
+  | PingMessage
+  | PairRequestMessage
+  | PairResponseMessage;
 
 // --- Daemon → Client ---
 
@@ -148,6 +160,25 @@ export interface PongMessage extends BaseMessage {
   type: 'pong';
 }
 
+export interface PairChallengeMessage extends BaseMessage {
+  type: 'pair:challenge';
+  daemonName: string;
+  hostname: string;
+}
+
+export interface PairTokenMessage extends BaseMessage {
+  type: 'pair:token';
+  token: string;
+  daemonId: string;
+  hostname: string;
+  fingerprint: string;
+}
+
+export interface PairFailMessage extends BaseMessage {
+  type: 'pair:fail';
+  reason: string;
+}
+
 export interface ErrorMessage extends BaseMessage {
   type: 'error';
   code: string;
@@ -168,6 +199,9 @@ export type DaemonMessage =
   | ReplayDataMessage
   | ReplayEndMessage
   | PongMessage
+  | PairChallengeMessage
+  | PairTokenMessage
+  | PairFailMessage
   | ErrorMessage;
 
 // --- Serialization ---

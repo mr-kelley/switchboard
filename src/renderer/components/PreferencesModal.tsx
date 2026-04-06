@@ -31,8 +31,10 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
   inputStyle: React.CSSProperties;
   labelStyle: React.CSSProperties;
 }): React.ReactElement {
-  const [connStr, setConnStr] = useState('');
-  const [daemonName, setDaemonName] = useState('');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('3717');
+  const [pairingCode, setPairingCode] = useState('');
+  const [phase, setPhase] = useState<'idle' | 'waiting' | 'code'>('idle');
   const [error, setError] = useState('');
   const [statuses, setStatuses] = useState<DaemonStatus[]>([]);
 
@@ -51,35 +53,52 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
     return () => clearInterval(interval);
   }, [refreshStatuses]);
 
-  const handleAdd = async () => {
-    setError('');
-    if (!daemonName.trim()) {
-      setError('Name is required');
-      return;
-    }
-    const parsed = parseConnectionString(connStr);
-    if (!parsed) {
-      setError('Invalid connection string. Paste the string from daemon output.');
-      return;
-    }
-    const id = `daemon-${Date.now()}`;
-    try {
-      await window.switchboard.daemon.add({
-        id,
-        name: daemonName.trim(),
-        host: parsed.host,
-        port: parsed.port,
-        token: parsed.token,
-        fingerprint: parsed.fingerprint,
-        autoConnect: true,
-      });
-      await window.switchboard.daemon.connect(id);
-      setConnStr('');
-      setDaemonName('');
+  useEffect(() => {
+    const unsubChallenge = window.switchboard.daemon.onPairChallenge(() => {
+      setPhase('code');
+    });
+    const unsubSuccess = window.switchboard.daemon.onPairSuccess(() => {
+      setPhase('idle');
+      setHost('');
+      setPort('3717');
+      setPairingCode('');
+      setError('');
       refreshStatuses();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add daemon');
+    });
+    const unsubFailed = window.switchboard.daemon.onPairFailed((reason: string) => {
+      setPhase('idle');
+      setError(`Pairing failed: ${reason}`);
+    });
+    return () => { unsubChallenge(); unsubSuccess(); unsubFailed(); };
+  }, [refreshStatuses]);
+
+  const handlePair = async () => {
+    setError('');
+    if (!host.trim()) {
+      setError('Host is required');
+      return;
     }
+    const portNum = parseInt(port, 10);
+    if (!portNum || portNum < 1 || portNum > 65535) {
+      setError('Invalid port');
+      return;
+    }
+    setPhase('waiting');
+    try {
+      await window.switchboard.daemon.pair(host.trim(), portNum, 'Switchboard Client');
+    } catch (err) {
+      setPhase('idle');
+      setError(err instanceof Error ? err.message : 'Failed to connect');
+    }
+  };
+
+  const handleSubmitCode = () => {
+    if (!pairingCode.trim()) {
+      setError('Enter the 6-digit code from the daemon console');
+      return;
+    }
+    window.switchboard.daemon.submitCode(pairingCode.trim());
+    setPairingCode('');
   };
 
   const handleDisconnect = async (daemonId: string) => {
@@ -103,6 +122,11 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
     return uiColors.statusDefault;
   };
 
+  const btnStyle: React.CSSProperties = {
+    padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
+    border: `1px solid ${uiColors.inputBorder}`, borderRadius: 3, cursor: 'pointer',
+  };
+
   return (
     <div>
       <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 12 }}>
@@ -111,7 +135,7 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
 
       {statuses.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Connected Daemons</label>
+          <label style={labelStyle}>Daemons</label>
           {statuses.map((d) => (
             <div key={d.id} style={{
               display: 'flex', alignItems: 'center', gap: 8,
@@ -125,23 +149,11 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
               <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>{d.name}</span>
               <span style={{ fontSize: 11, color: uiColors.appTextMuted }}>{d.status} ({d.sessionCount} sessions)</span>
               {d.status === 'connected' ? (
-                <button onClick={() => handleDisconnect(d.id)} style={{
-                  padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
-                  color: uiColors.appTextMuted, border: `1px solid ${uiColors.inputBorder}`,
-                  borderRadius: 3, cursor: 'pointer',
-                }}>Disconnect</button>
+                <button onClick={() => handleDisconnect(d.id)} style={{ ...btnStyle, color: uiColors.appTextMuted }}>Disconnect</button>
               ) : d.status === 'disconnected' ? (
                 <>
-                  <button onClick={() => handleConnect(d.id)} style={{
-                    padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
-                    color: uiColors.appTextMuted, border: `1px solid ${uiColors.inputBorder}`,
-                    borderRadius: 3, cursor: 'pointer',
-                  }}>Connect</button>
-                  <button onClick={() => handleRemove(d.id)} style={{
-                    padding: '2px 8px', fontSize: 11, backgroundColor: 'transparent',
-                    color: uiColors.errorText, border: `1px solid ${uiColors.errorText}`,
-                    borderRadius: 3, cursor: 'pointer',
-                  }}>Remove</button>
+                  <button onClick={() => handleConnect(d.id)} style={{ ...btnStyle, color: uiColors.appTextMuted }}>Connect</button>
+                  <button onClick={() => handleRemove(d.id)} style={{ ...btnStyle, color: uiColors.errorText, borderColor: uiColors.errorText }}>Remove</button>
                 </>
               ) : (
                 <span style={{ fontSize: 11, color: uiColors.appTextFaint }}>...</span>
@@ -151,47 +163,82 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
         </div>
       )}
 
-      <div style={{ marginBottom: 14 }}>
-        <label style={labelStyle}>Daemon Name</label>
-        <input
-          type="text"
-          value={daemonName}
-          onChange={(e) => setDaemonName(e.target.value)}
-          placeholder="e.g. localhost, lab-vm, server-1"
-          style={inputStyle}
-        />
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <label style={labelStyle}>Connection String</label>
-        <input
-          type="text"
-          value={connStr}
-          onChange={(e) => setConnStr(e.target.value)}
-          placeholder="switchboard://host:port?token=...&fingerprint=..."
-          style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 11 }}
-        />
-        <div style={{ fontSize: 11, color: uiColors.appTextFaint, marginTop: 4 }}>
-          Paste the connection string from the daemon's startup output.
-        </div>
-      </div>
-      {error && (
-        <div style={{ color: uiColors.errorText, fontSize: 12, marginBottom: 12 }}>{error}</div>
+      {phase === 'idle' && (
+        <>
+          <label style={labelStyle}>Add Daemon</label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="hostname or IP"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ width: 80 }}>
+              <input
+                type="text"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder="3717"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+          <button
+            onClick={handlePair}
+            style={{
+              padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
+              color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
+              fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Pair
+          </button>
+        </>
       )}
-      <button
-        onClick={handleAdd}
-        style={{
-          padding: '6px 14px',
-          backgroundColor: uiColors.buttonPrimaryBg,
-          color: uiColors.buttonPrimaryText,
-          border: 'none',
-          borderRadius: 4,
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}
-      >
-        Add &amp; Connect
-      </button>
+
+      {phase === 'waiting' && (
+        <div style={{ fontSize: 13, color: uiColors.appTextMuted }}>
+          Connecting to {host}:{port}...
+        </div>
+      )}
+
+      {phase === 'code' && (
+        <>
+          <label style={labelStyle}>Pairing Code</label>
+          <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 8 }}>
+            A 6-digit code is displayed on the daemon's console. Enter it below.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <input
+              type="text"
+              value={pairingCode}
+              onChange={(e) => setPairingCode(e.target.value)}
+              placeholder="123456"
+              maxLength={6}
+              autoFocus
+              style={{ ...inputStyle, width: 120, fontFamily: 'monospace', fontSize: 18, textAlign: 'center', letterSpacing: '0.2em' }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitCode(); }}
+            />
+            <button
+              onClick={handleSubmitCode}
+              style={{
+                padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
+                color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Submit
+            </button>
+          </div>
+        </>
+      )}
+
+      {error && (
+        <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 8 }}>{error}</div>
+      )}
     </div>
   );
 }

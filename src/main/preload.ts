@@ -91,6 +91,33 @@ const api = {
       ipcRenderer.on('daemon:connected', handler);
       return () => ipcRenderer.removeListener('daemon:connected', handler);
     },
+    pair(host: string, port: number, clientName: string) {
+      return ipcRenderer.invoke('daemon:pair', { host, port, clientName });
+    },
+    submitCode(code: string) {
+      return ipcRenderer.invoke('daemon:submit-code', code);
+    },
+    onPairChallenge(callback: (daemonName: string) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { daemonName: string }) => {
+        callback(args.daemonName);
+      };
+      ipcRenderer.on('daemon:pair-challenge', handler);
+      return () => ipcRenderer.removeListener('daemon:pair-challenge', handler);
+    },
+    onPairSuccess(callback: (name: string) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { name: string }) => {
+        callback(args.name);
+      };
+      ipcRenderer.on('daemon:pair-success', handler);
+      return () => ipcRenderer.removeListener('daemon:pair-success', handler);
+    },
+    onPairFailed(callback: (reason: string) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { reason: string }) => {
+        callback(args.reason);
+      };
+      ipcRenderer.on('daemon:pair-failed', handler);
+      return () => ipcRenderer.removeListener('daemon:pair-failed', handler);
+    },
   },
   preferences: {
     load() {

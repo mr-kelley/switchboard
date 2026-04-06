@@ -40,6 +40,11 @@ beforeEach(() => {
       statuses: vi.fn().mockResolvedValue([]),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
       onConnected: vi.fn().mockReturnValue(() => {}),
+      pair: vi.fn().mockResolvedValue(undefined),
+      submitCode: vi.fn().mockResolvedValue(undefined),
+      onPairChallenge: vi.fn().mockReturnValue(() => {}),
+      onPairSuccess: vi.fn().mockReturnValue(() => {}),
+      onPairFailed: vi.fn().mockReturnValue(() => {}),
     },
     preferences: {
       load: vi.fn().mockResolvedValue({}),
