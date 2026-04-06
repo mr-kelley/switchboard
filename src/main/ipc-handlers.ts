@@ -62,14 +62,21 @@ export function registerIpcHandlers(sessionManager: SessionManager, connectionMa
     }
 
     const daemonId = args.daemonId || connectionManager.getDefaultDaemonId();
+    console.log(`[pty:spawn] daemonId=${daemonId}, statuses=${JSON.stringify(connectionManager.getConnectionStatuses())}`);
     if (daemonId) {
       // Route to daemon
-      connectionManager.spawn(daemonId, args.name.trim(), args.cwd.trim(), args.command?.trim());
+      try {
+        connectionManager.spawn(daemonId, args.name.trim(), args.cwd.trim(), args.command?.trim());
+      } catch (err) {
+        console.error('[pty:spawn] daemon spawn failed:', err);
+        throw err;
+      }
       // Session will arrive via daemon:session-created broadcast
       return null; // Async — renderer will get the session via event
     }
 
     // Local fallback
+    console.log('[pty:spawn] no daemon — using local PTY');
     const session = sessionManager.spawn({
       name: args.name.trim(),
       cwd: args.cwd.trim(),

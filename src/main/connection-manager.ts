@@ -29,6 +29,7 @@ interface ManagedConnection {
   seq: SequenceCounter;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectDelay: number;
+  lastPong: number;
   sessions: Map<string, SessionInfo>;
   replayingSessions: Set<string>;
 }
@@ -55,6 +56,7 @@ export class ConnectionManager {
       seq: new SequenceCounter(),
       reconnectTimer: null,
       reconnectDelay: 1000,
+      lastPong: Date.now(),
       sessions: new Map(),
       replayingSessions: new Set(),
     });
@@ -259,6 +261,7 @@ export class ConnectionManager {
   private pairingWs: WebSocket | null = null;
   private pairingHost = '';
   private pairingPort = 0;
+  private pairingTokenData: any = null;
 
   /**
    * Initiate pairing with a daemon. Opens a WebSocket, sends pair:request,
@@ -273,6 +276,7 @@ export class ConnectionManager {
       this.pairingWs = ws;
       this.pairingHost = host;
       this.pairingPort = port;
+      this.pairingTokenData = null;
 
       ws.on('open', () => {
         ws.send(JSON.stringify({ type: 'pair:request', seq: 1, clientName }));
@@ -287,13 +291,15 @@ export class ConnectionManager {
               host, port,
               daemonName: msg.daemonName || msg.hostname,
             });
-            resolve(); // Pairing initiated — now waiting for user to enter code
+            resolve();
           } else if (msg.type === 'pair:token') {
-            // Got the token — save it and wait for auth:ok
-            this.handlePairToken(host, port, msg);
+            // Save token data — we'll use it when auth:ok arrives
+            this.pairingTokenData = msg;
           } else if (msg.type === 'auth:ok') {
-            // Pairing + auth complete — close pairing WS, connect normally
-            ws.close();
+            // Pairing + auth complete on this WS — promote it to a managed connection
+            if (this.pairingTokenData) {
+              this.promotePairingConnection(host, port, ws, this.pairingTokenData, msg);
+            }
           } else if (msg.type === 'pair:fail') {
             broadcast('daemon:pair-failed', { reason: msg.reason });
             ws.close();
@@ -308,8 +314,11 @@ export class ConnectionManager {
         reject(new Error(`Failed to connect to ${host}:${port}: ${err.message}`));
       });
 
+      // Only clean up pairingWs ref if the WS wasn't promoted
       ws.on('close', () => {
-        this.pairingWs = null;
+        if (this.pairingWs === ws) {
+          this.pairingWs = null;
+        }
       });
     });
   }
@@ -325,22 +334,81 @@ export class ConnectionManager {
     this.pairingWs.send(JSON.stringify({ type: 'pair:response', seq: 2, code }));
   }
 
-  private handlePairToken(host: string, port: number, msg: any): void {
+  /**
+   * Promote the pairing WebSocket to a full managed connection.
+   * This avoids opening a second WS — the pairing WS is already authenticated.
+   */
+  private promotePairingConnection(host: string, port: number, ws: WebSocket, tokenData: any, authOk: any): void {
     const config: DaemonConnectionConfig = {
-      id: msg.daemonId || `daemon-${Date.now()}`,
-      name: msg.hostname || `${host}:${port}`,
+      id: tokenData.daemonId || `daemon-${Date.now()}`,
+      name: tokenData.hostname || `${host}:${port}`,
       host,
       port,
-      token: msg.token,
-      fingerprint: msg.fingerprint || '',
+      token: tokenData.token,
+      fingerprint: tokenData.fingerprint || '',
       autoConnect: true,
     };
 
-    broadcast('daemon:pair-success', { name: config.name });
+    console.log(`[pairing] Promoting pairing WS to managed connection ${config.id} (${config.name})`);
 
-    // Add and connect through the normal path
-    this.addConnection(config);
-    this.connect(config.id);
+    // Clear pairing state
+    this.pairingWs = null;
+    this.pairingTokenData = null;
+
+    // Create the managed connection with the existing WS
+    const conn: ManagedConnection = {
+      config,
+      ws,
+      status: 'connected',
+      seq: new SequenceCounter(),
+      reconnectTimer: null,
+      reconnectDelay: 1000,
+      lastPong: Date.now(),
+      sessions: new Map(),
+      replayingSessions: new Set(),
+    };
+
+    this.connections.set(config.id, conn);
+
+    // Re-wire the WS message handler to use the managed connection's handler
+    ws.removeAllListeners('message');
+    ws.removeAllListeners('close');
+    ws.removeAllListeners('error');
+
+    ws.on('message', (rawData) => {
+      try {
+        const msg = deserializeMessage(rawData.toString()) as DaemonMessage;
+        this.handleDaemonMessage(conn, msg);
+      } catch {
+        // Ignore
+      }
+    });
+
+    ws.on('close', () => {
+      const wasConnected = conn.status === 'connected';
+      conn.ws = null;
+      if (wasConnected) {
+        this.setStatus(conn, 'reconnecting');
+        this.scheduleReconnect(conn);
+      } else {
+        this.setStatus(conn, 'disconnected');
+      }
+    });
+
+    ws.on('error', () => {});
+
+    ws.on('pong', () => {
+      conn.lastPong = Date.now();
+    });
+
+    // Broadcast connected status
+    broadcast('daemon:connected', { daemonId: config.id, name: config.name });
+    broadcast('daemon:pair-success', { name: config.name });
+    this.setStatus(conn, 'connected');
+
+    // Request session list (the daemon already sent it after auth:ok,
+    // but our handler wasn't wired yet — request it again)
+    this.sendToDaemon(conn, { type: 'session:list' });
   }
 
   // --- Message handling ---
