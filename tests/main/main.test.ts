@@ -36,6 +36,11 @@ vi.mock('electron', () => {
   };
 });
 
+vi.mock('ws', () => ({
+  WebSocket: vi.fn(),
+  WebSocketServer: vi.fn(),
+}));
+
 vi.mock('node-pty', () => ({
   spawn: vi.fn().mockReturnValue({
     pid: 1,

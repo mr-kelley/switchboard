@@ -2,7 +2,7 @@
 sprint: 14
 title: Client Connection Manager
 milestone: Daemon
-status: planned
+status: completed
 ---
 
 # Goal

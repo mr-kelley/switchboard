@@ -104,7 +104,7 @@ export interface SwitchboardAPI {
   };
   onCycleTab(callback: (shift: boolean) => void): () => void;
   pty: {
-    spawn(config: SessionConfig): Promise<SessionInfo>;
+    spawn(config: SessionConfig & { daemonId?: string }): Promise<SessionInfo | null>;
     resize(sessionId: string, cols: number, rows: number): Promise<void>;
     close(sessionId: string): Promise<void>;
     input(sessionId: string, data: string): void;
@@ -114,6 +114,16 @@ export interface SwitchboardAPI {
   session: {
     list(): Promise<SessionInfo[]>;
     onStatusChanged(callback: (sessionId: string, status: SessionStatus) => void): () => void;
+    onSessionCreated(callback: (session: SessionInfo) => void): () => void;
+  };
+  daemon: {
+    add(config: { id: string; name: string; host: string; port: number; token: string; fingerprint: string; autoConnect: boolean }): Promise<void>;
+    connect(daemonId: string): Promise<void>;
+    disconnect(daemonId: string): Promise<void>;
+    remove(daemonId: string): Promise<void>;
+    statuses(): Promise<Array<{ id: string; name: string; status: string; sessionCount: number }>>;
+    onStatusChanged(callback: (daemonId: string, name: string, status: string) => void): () => void;
+    onConnected(callback: (daemonId: string, name: string) => void): () => void;
   };
   preferences: {
     load(): Promise<SwitchboardPreferences>;

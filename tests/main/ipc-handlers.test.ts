@@ -57,7 +57,24 @@ describe('IPC Handlers', () => {
     vi.clearAllMocks();
     handlers.clear();
     listeners.clear();
-    registerIpcHandlers(mockSessionManager as any);
+    const mockConnectionManager = {
+      hasDaemons: vi.fn().mockReturnValue(false),
+      getDefaultDaemonId: vi.fn().mockReturnValue(null),
+      getAllSessions: vi.fn().mockReturnValue([]),
+      connectAll: vi.fn(),
+      disconnectAll: vi.fn(),
+      addConnection: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      removeConnection: vi.fn(),
+      getConnectionStatuses: vi.fn().mockReturnValue([]),
+      spawn: vi.fn(),
+      input: vi.fn(),
+      resize: vi.fn(),
+      close: vi.fn(),
+      rename: vi.fn(),
+    };
+    registerIpcHandlers(mockSessionManager as any, mockConnectionManager as any);
   });
 
   describe('pty:spawn', () => {

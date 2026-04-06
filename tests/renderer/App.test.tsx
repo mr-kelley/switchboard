@@ -30,6 +30,16 @@ beforeEach(() => {
     session: {
       list: vi.fn().mockResolvedValue([]),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
+      onSessionCreated: vi.fn().mockReturnValue(() => {}),
+    },
+    daemon: {
+      add: vi.fn().mockResolvedValue(undefined),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+      statuses: vi.fn().mockResolvedValue([]),
+      onStatusChanged: vi.fn().mockReturnValue(() => {}),
+      onConnected: vi.fn().mockReturnValue(() => {}),
     },
     preferences: {
       load: vi.fn().mockResolvedValue({}),

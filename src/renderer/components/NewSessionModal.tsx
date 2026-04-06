@@ -39,7 +39,10 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
         cwd: cwd.trim(),
         command: command.trim() || undefined,
       });
-      onSessionCreated(session);
+      // Local spawn returns session directly; daemon spawn returns null (arrives via event)
+      if (session) {
+        onSessionCreated(session);
+      }
       setName('');
       setCwd('');
       setCommand('claude');

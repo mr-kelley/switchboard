@@ -76,6 +76,14 @@ function AppContent(): React.ReactElement {
     return unsubStatus;
   }, [updateSessionStatus]);
 
+  // Listen for daemon-created sessions (async spawn via daemon)
+  useEffect(() => {
+    const unsub = window.switchboard.session.onSessionCreated((session: import('../shared/types').SessionInfo) => {
+      addSession(session);
+    });
+    return unsub;
+  }, [addSession]);
+
   const selectSessionByIndex = useCallback((index: number) => {
     if (index < state.sessions.length) {
       setActiveSession(state.sessions[index].id);
