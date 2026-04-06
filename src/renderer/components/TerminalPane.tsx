@@ -194,9 +194,16 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
     }
   }, [visible, sessionId]);
 
+  const handleClick = () => {
+    if (terminalRef.current) {
+      terminalRef.current.focus();
+    }
+  };
+
   return (
     <div
       data-testid={`terminal-pane-${sessionId}`}
+      onClick={handleClick}
       style={{
         display: visible ? 'block' : 'none',
         position: 'absolute',
