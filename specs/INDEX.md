@@ -6,7 +6,23 @@
 |------|------|--------|
 | Daemon Architecture | `specs/daemon-architecture-spec.md` | draft |
 
-## Implementation Specs
+## Implementation Specs — Daemon
+
+| Spec | Path | Status |
+|------|------|--------|
+| Daemon Config | `specs/src/daemon/config-spec.md` | draft |
+| Daemon PTY Manager | `specs/src/daemon/pty-manager-spec.md` | draft |
+| Daemon Idle Detector | `specs/src/daemon/idle-detector-spec.md` | draft |
+| Daemon Output Buffer | `specs/src/daemon/output-buffer-spec.md` | draft |
+| Daemon Session Store | `specs/src/daemon/session-store-spec.md` | draft |
+
+## Implementation Specs — Shared
+
+| Spec | Path | Status |
+|------|------|--------|
+| Wire Protocol | `specs/src/shared/protocol-spec.md` | draft |
+
+## Implementation Specs — Client
 
 | Spec | Path | Status |
 |------|------|--------|

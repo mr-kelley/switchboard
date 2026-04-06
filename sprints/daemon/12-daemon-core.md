@@ -2,7 +2,7 @@
 sprint: 12
 title: Daemon Core — Protocol, PTY Management, Output Buffer
 milestone: Daemon
-status: planned
+status: completed
 ---
 
 # Goal
