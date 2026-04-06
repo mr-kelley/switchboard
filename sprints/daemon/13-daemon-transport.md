@@ -2,7 +2,7 @@
 sprint: 13
 title: Daemon Transport — WebSocket Server, Auth, Replay
 milestone: Daemon
-status: planned
+status: completed
 ---
 
 # Goal
