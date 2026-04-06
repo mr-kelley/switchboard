@@ -1,5 +1,13 @@
 # Spec Index — Switchboard
 
+## Architecture Specs
+
+| Spec | Path | Status |
+|------|------|--------|
+| Daemon Architecture | `specs/daemon-architecture-spec.md` | draft |
+
+## Implementation Specs
+
 | Spec | Path | Status |
 |------|------|--------|
 | Main Process Entry Point | `specs/src/main/main-spec.md` | active |
