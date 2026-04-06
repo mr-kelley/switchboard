@@ -273,8 +273,15 @@ export class ConnectionManager {
         conn.sessions.clear();
         for (const session of msg.sessions) {
           conn.sessions.set(session.id, session);
+          // Emit individual session-created events so the renderer picks them up
+          const compositeId = `${conn.config.id}:${session.id}`;
+          broadcast('daemon:session-created', {
+            ...session,
+            id: compositeId,
+            daemonId: conn.config.id,
+            daemonName: conn.config.name,
+          });
         }
-        broadcast('daemon:sessions-updated', { daemonId: conn.config.id });
         break;
 
       case 'session:created': {
