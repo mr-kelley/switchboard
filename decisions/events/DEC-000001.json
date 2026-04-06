@@ -1,0 +1,64 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000001",
+  "ts": "2026-04-06T00:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude+user",
+  "decision_class": "B",
+  "title": "Introduce daemon architecture; restructure milestones v3-v5",
+  "decision": "Retire the planned v3 Intelligence milestone. Introduce v3 Daemon (client-server split with standalone daemon process), v4 Flow II (deferred client UX enhancements), and v5 Intelligence (rebuilt on daemon). All PTY management moves to daemon; Electron client becomes a pure display/input layer that connects to N daemons via WebSocket + TLS.",
+  "context": {
+    "task_description": "User testing revealed that the primary workflow involves running AI agents on remote VMs via SSH, and working from multiple workstations. The current local-only PTY architecture cannot support session mobility or remote session management without manual SSH workarounds.",
+    "assumptions": [
+      "Developer works across multiple machines (lab workstation + laptop over Wireguard)",
+      "Sessions run on VMs in a lab environment, not on the desktop",
+      "Network interruptions occur (WiFi drops on laptop) and sessions must survive them",
+      "Full scrollback history replay is needed after reconnect"
+    ],
+    "spec_refs": [
+      "NORTHSTAR.md#roadmap",
+      "ROADMAP.md",
+      "claude/planning-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["architecture", "milestones", "planning"],
+    "paths": ["NORTHSTAR.md", "ROADMAP.md", "BACKLOG.md", "STATE.md"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Daemon-first architecture",
+      "chosen": true,
+      "description": "Introduce a standalone daemon for PTY management. Client connects via WebSocket + TLS. All sessions daemon-managed including localhost. Intelligence features deferred to v5, built on daemon."
+    },
+    {
+      "id": "B",
+      "label": "Keep local-only; add SSH tunneling",
+      "chosen": false,
+      "description": "Keep the current monolithic architecture. Add SSH-based PTY forwarding to support remote sessions. Session mobility solved via session state export/import."
+    },
+    {
+      "id": "C",
+      "label": "Interleave daemon and intelligence",
+      "chosen": false,
+      "description": "Build daemon and intelligence features concurrently. Rejected because intelligence features depend on knowing where the PTY output stream lives — building them on the current architecture and then migrating to daemon would require rework."
+    }
+  ],
+  "rationale": "The daemon is foundational infrastructure. Status inference, session timeline, and the plugin API all need the PTY output stream, which moves to the daemon. Building intelligence on the current local-PTY model and then migrating would mean building it twice. Daemon-first means intelligence features become easier to implement, not harder. Client-side UX features (queued prompts, tray, templates, groups) are independent and can be built in parallel.",
+  "risk": {
+    "level": "medium",
+    "rollback": "If daemon architecture proves infeasible, the existing v1+v2 local-only architecture remains fully functional. Planning artifacts can be reverted."
+  },
+  "links": {
+    "issues": ["#21", "#22"],
+    "files": ["NORTHSTAR.md", "ROADMAP.md", "BACKLOG.md", "STATE.md"]
+  },
+  "outcome": {
+    "status": "success",
+    "verified_by": ["Planning artifacts updated", "Milestone structure defined"],
+    "notes": "Architecture defined in NORTHSTAR.md. Sprint planning for v3 Daemon pending."
+  },
+  "tags": ["architecture", "daemon", "milestones", "client-server", "session-mobility"]
+}
