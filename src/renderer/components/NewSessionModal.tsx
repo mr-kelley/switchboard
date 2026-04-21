@@ -1,6 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SessionInfo } from '../../shared/types';
 import { usePreferences } from '../state/preferences';
+
+interface DaemonStatus {
+  id: string;
+  name: string;
+  status: string;
+  sessionCount: number;
+}
 
 interface NewSessionModalProps {
   isOpen: boolean;
@@ -12,10 +19,23 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [command, setCommand] = useState('claude');
+  const [daemonId, setDaemonId] = useState<string>('');
+  const [daemons, setDaemons] = useState<DaemonStatus[]>([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { prefs } = usePreferences();
   const { uiColors } = prefs;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.switchboard.daemon.statuses().then((s) => {
+      const connected = s.filter((d: DaemonStatus) => d.status === 'connected');
+      setDaemons(connected);
+      if (connected.length > 0 && !daemonId) {
+        setDaemonId(connected[0].id);
+      }
+    }).catch(() => {});
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -38,8 +58,12 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
         name: name.trim(),
         cwd: cwd.trim(),
         command: command.trim() || undefined,
+        daemonId: daemonId || undefined,
       });
-      onSessionCreated(session);
+      // Local spawn returns session directly; daemon spawn returns null (arrives via event)
+      if (session) {
+        onSessionCreated(session);
+      }
       setName('');
       setCwd('');
       setCommand('claude');
@@ -100,6 +124,21 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
           New Session
         </h2>
         <form onSubmit={handleSubmit}>
+          {daemons.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Host</label>
+              <select
+                value={daemonId}
+                onChange={(e) => setDaemonId(e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                {daemons.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name} ({d.sessionCount} sessions)</option>
+                ))}
+                <option value="">Local</option>
+              </select>
+            </div>
+          )}
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Project Name</label>
             <input

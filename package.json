@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.2.1-rc",
+  "version": "0.3.0-rc.6",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -9,7 +9,9 @@
     "dev:main": "tsc -p tsconfig.main.json --watch & sleep 2 && electron . --no-sandbox",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
-    "build": "npm run build:main && npm run build:renderer",
+    "build:daemon": "tsc -p tsconfig.daemon.json",
+    "build": "npm run build:main && npm run build:daemon && npm run build:renderer",
+    "daemon": "npm run build:daemon && node dist/daemon/daemon/daemon.js",
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,7 +36,8 @@
     "electron-is-dev": "^2.0.0",
     "node-pty": "^1.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ws": "^8.20.0"
   },
   "build": {
     "appId": "com.switchboard.terminal",
@@ -114,6 +117,7 @@
     "@testing-library/react": "^16.1.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^33.2.1",

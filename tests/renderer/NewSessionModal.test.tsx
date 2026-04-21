@@ -17,6 +17,9 @@ beforeEach(() => {
         id: 'new-id', name: 'test', cwd: '/tmp', command: 'claude', pid: 1, status: 'working',
       }),
     },
+    daemon: {
+      statuses: vi.fn().mockResolvedValue([]),
+    },
   };
 });
 

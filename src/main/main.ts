@@ -1,10 +1,13 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { SessionManager } from './session-manager';
+import { ConnectionManager } from './connection-manager';
 import { registerIpcHandlers } from './ipc-handlers';
+import { PreferencesStore } from './preferences-store';
 
 let mainWindow: BrowserWindow | null = null;
 const sessionManager = new SessionManager();
+const connectionManager = new ConnectionManager();
 
 const isDev = !app.isPackaged;
 
@@ -34,7 +37,17 @@ export function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(sessionManager);
+  // Load daemon connections from preferences
+  const prefsStore = new PreferencesStore();
+  const prefs = prefsStore.load();
+  const daemonConnections = (prefs as any).daemonConnections || [];
+  for (const conn of daemonConnections) {
+    if (conn && conn.id && conn.host && conn.port && conn.token) {
+      connectionManager.addConnection(conn);
+    }
+  }
+
+  registerIpcHandlers(sessionManager, connectionManager);
   mainWindow = createWindow();
 
   // Intercept Ctrl+Tab / Ctrl+Shift+Tab before Chromium eats them
@@ -44,6 +57,9 @@ app.whenReady().then(() => {
       mainWindow?.webContents.send('shortcut:cycle-tab', { shift: input.shift });
     }
   });
+
+  // Auto-connect to configured daemons
+  connectionManager.connectAll();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -57,5 +73,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  connectionManager.disconnectAll();
   sessionManager.closeAll();
 });
