@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mockUsePreferences } from '../../helpers/mock-preferences';
 
 vi.mock('../../../src/renderer/state/preferences', () => ({
@@ -20,6 +20,16 @@ vi.mock('../../../src/renderer/state/sessions', () => ({
   useSessions: () => ({ state: mockState }),
   SessionsProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
+
+beforeEach(() => {
+  (window as any).switchboard = {
+    daemon: {
+      statuses: vi.fn().mockResolvedValue([]),
+      onStatusChanged: vi.fn().mockReturnValue(() => {}),
+      onConnected: vi.fn().mockReturnValue(() => {}),
+    },
+  };
+});
 
 import StatusBar from '../../../src/renderer/components/StatusBar';
 
@@ -42,5 +52,19 @@ describe('StatusBar', () => {
   it('shows shortcut hints', () => {
     render(<StatusBar />);
     expect(screen.getByText(/Ctrl\+N/)).toBeInTheDocument();
+  });
+
+  it('shows daemon count when daemons are configured', async () => {
+    (window as any).switchboard.daemon.statuses.mockResolvedValue([
+      { id: 'localhost', name: 'Localhost', status: 'connected', sessionCount: 1 },
+      { id: 'vm', name: 'VM', status: 'disconnected', sessionCount: 0 },
+    ]);
+    render(<StatusBar />);
+    await waitFor(() => expect(screen.getByTestId('daemon-count')).toHaveTextContent('1/2 daemons'));
+  });
+
+  it('hides daemon count when no daemons configured', () => {
+    render(<StatusBar />);
+    expect(screen.queryByTestId('daemon-count')).not.toBeInTheDocument();
   });
 });

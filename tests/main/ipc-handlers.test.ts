@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
 
-// Store registered handlers
 const handlers = new Map<string, Function>();
 const listeners = new Map<string, Function>();
 
@@ -21,45 +20,23 @@ vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue(path.join(os.tmpdir(), 'switchboard-test-ipc')),
   },
-  Notification: Object.assign(
-    vi.fn().mockImplementation(() => ({ show: vi.fn() })),
-    { isSupported: () => true }
-  ),
+  dialog: {
+    showOpenDialog: vi.fn(),
+  },
 }));
-
-// Mock SessionManager
-const mockSpawn = vi.fn().mockReturnValue({ id: 'test-id', name: 'test', cwd: '/tmp', command: '/bin/bash', pid: 123, status: 'working' });
-const mockResize = vi.fn();
-const mockClose = vi.fn();
-const mockGetAll = vi.fn().mockReturnValue([]);
-const mockGetSession = vi.fn();
-const mockUpdateStatus = vi.fn();
-const mockWrite = vi.fn();
-const mockSetOnData = vi.fn();
-const mockSetOnExit = vi.fn();
-
-const mockSessionManager = {
-  spawn: mockSpawn,
-  resize: mockResize,
-  close: mockClose,
-  getAll: mockGetAll,
-  getSession: mockGetSession,
-  updateStatus: mockUpdateStatus,
-  write: mockWrite,
-  setOnData: mockSetOnData,
-  setOnExit: mockSetOnExit,
-};
 
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
 
 describe('IPC Handlers', () => {
+  let mockConnectionManager: any;
+
   beforeEach(() => {
     vi.clearAllMocks();
     handlers.clear();
     listeners.clear();
-    const mockConnectionManager = {
-      hasDaemons: vi.fn().mockReturnValue(false),
-      getDefaultDaemonId: vi.fn().mockReturnValue(null),
+    mockConnectionManager = {
+      hasDaemons: vi.fn().mockReturnValue(true),
+      getDefaultDaemonId: vi.fn().mockReturnValue('localhost'),
       getAllSessions: vi.fn().mockReturnValue([]),
       connectAll: vi.fn(),
       disconnectAll: vi.fn(),
@@ -73,8 +50,10 @@ describe('IPC Handlers', () => {
       resize: vi.fn(),
       close: vi.fn(),
       rename: vi.fn(),
+      pair: vi.fn(),
+      submitPairingCode: vi.fn(),
     };
-    registerIpcHandlers(mockSessionManager as any, mockConnectionManager as any);
+    registerIpcHandlers(mockConnectionManager);
   });
 
   describe('pty:spawn', () => {
@@ -92,12 +71,22 @@ describe('IPC Handlers', () => {
       expect(() => handler({}, { name: 'test', cwd: '' })).toThrow('non-empty cwd');
     });
 
-    it('delegates to session manager', () => {
+    it('routes to default daemon when daemonId not provided', () => {
       const handler = handlers.get('pty:spawn')!;
-      const result = handler({}, { name: 'test', cwd: '/tmp' });
+      handler({}, { name: 'test', cwd: '/tmp' });
+      expect(mockConnectionManager.spawn).toHaveBeenCalledWith('localhost', 'test', '/tmp', undefined);
+    });
 
-      expect(mockSpawn).toHaveBeenCalledWith({ name: 'test', cwd: '/tmp', command: undefined });
-      expect(result.id).toBe('test-id');
+    it('routes to explicit daemonId when provided', () => {
+      const handler = handlers.get('pty:spawn')!;
+      handler({}, { name: 'test', cwd: '/tmp', daemonId: 'vm-box' });
+      expect(mockConnectionManager.spawn).toHaveBeenCalledWith('vm-box', 'test', '/tmp', undefined);
+    });
+
+    it('throws when no daemon is available', () => {
+      mockConnectionManager.getDefaultDaemonId.mockReturnValue(null);
+      const handler = handlers.get('pty:spawn')!;
+      expect(() => handler({}, { name: 'test', cwd: '/tmp' })).toThrow('No daemon connected');
     });
   });
 
@@ -112,11 +101,10 @@ describe('IPC Handlers', () => {
       expect(() => handler({}, { sessionId: 'id', cols: 'x', rows: 24 })).toThrow('numeric');
     });
 
-    it('delegates to session manager', () => {
+    it('delegates to connection manager', () => {
       const handler = handlers.get('pty:resize')!;
-      handler({}, { sessionId: 'test-id', cols: 120, rows: 40 });
-
-      expect(mockResize).toHaveBeenCalledWith('test-id', 120, 40);
+      handler({}, { sessionId: 'localhost:abc', cols: 120, rows: 40 });
+      expect(mockConnectionManager.resize).toHaveBeenCalledWith('localhost:abc', 120, 40);
     });
   });
 
@@ -126,20 +114,31 @@ describe('IPC Handlers', () => {
       expect(() => handler({}, {})).toThrow('sessionId');
     });
 
-    it('delegates to session manager', () => {
+    it('delegates to connection manager', () => {
       const handler = handlers.get('pty:close')!;
-      handler({}, { sessionId: 'test-id' });
-
-      expect(mockClose).toHaveBeenCalledWith('test-id');
+      handler({}, { sessionId: 'localhost:abc' });
+      expect(mockConnectionManager.close).toHaveBeenCalledWith('localhost:abc');
     });
   });
 
   describe('session:list', () => {
-    it('delegates to session manager', () => {
+    it('delegates to connection manager', () => {
       const handler = handlers.get('session:list')!;
       handler({});
+      expect(mockConnectionManager.getAllSessions).toHaveBeenCalled();
+    });
+  });
 
-      expect(mockGetAll).toHaveBeenCalled();
+  describe('session:rename', () => {
+    it('validates sessionId and name', () => {
+      const handler = handlers.get('session:rename')!;
+      expect(() => handler({}, { sessionId: 'id', name: '' })).toThrow('non-empty name');
+    });
+
+    it('delegates to connection manager', () => {
+      const handler = handlers.get('session:rename')!;
+      handler({}, { sessionId: 'localhost:abc', name: 'new-name' });
+      expect(mockConnectionManager.rename).toHaveBeenCalledWith('localhost:abc', 'new-name');
     });
   });
 
@@ -148,27 +147,30 @@ describe('IPC Handlers', () => {
       expect(listeners.has('pty:input')).toBe(true);
     });
 
-    it('delegates to session manager write', () => {
+    it('delegates to connection manager', () => {
       const listener = listeners.get('pty:input')!;
-      listener({}, { sessionId: 'test-id', data: 'hello' });
-
-      expect(mockWrite).toHaveBeenCalledWith('test-id', 'hello');
+      listener({}, { sessionId: 'localhost:abc', data: 'hello' });
+      expect(mockConnectionManager.input).toHaveBeenCalledWith('localhost:abc', 'hello');
     });
 
     it('silently drops invalid input', () => {
       const listener = listeners.get('pty:input')!;
       listener({}, { sessionId: 123, data: 'hello' });
-      expect(mockWrite).not.toHaveBeenCalled();
+      expect(mockConnectionManager.input).not.toHaveBeenCalled();
     });
   });
 
-  describe('event wiring', () => {
-    it('sets up onData handler', () => {
-      expect(mockSetOnData).toHaveBeenCalledOnce();
+  describe('daemon management', () => {
+    it('registers daemon:add, daemon:connect, daemon:disconnect, daemon:remove', () => {
+      expect(handlers.has('daemon:add')).toBe(true);
+      expect(handlers.has('daemon:connect')).toBe(true);
+      expect(handlers.has('daemon:disconnect')).toBe(true);
+      expect(handlers.has('daemon:remove')).toBe(true);
     });
 
-    it('sets up onExit handler', () => {
-      expect(mockSetOnExit).toHaveBeenCalledOnce();
+    it('registers pairing handlers', () => {
+      expect(handlers.has('daemon:pair')).toBe(true);
+      expect(handlers.has('daemon:submit-code')).toBe(true);
     });
   });
 });
