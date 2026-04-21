@@ -1,10 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
-import { SessionManager } from './session-manager';
-import { IdleDetector } from './idle-detector';
-import { SessionStore } from './session-store';
 import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
-import { notifyIfNeeded, isAppFocused } from './notifications';
 import type { SwitchboardPreferences } from '../shared/types';
 
 function broadcast(channel: string, data: unknown): void {
@@ -14,44 +10,10 @@ function broadcast(channel: string, data: unknown): void {
   }
 }
 
-export function registerIpcHandlers(sessionManager: SessionManager, connectionManager: ConnectionManager): void {
-  const sessionStore = new SessionStore();
+export function registerIpcHandlers(connectionManager: ConnectionManager): void {
   const preferencesStore = new PreferencesStore();
-  const idleDetector = new IdleDetector((sessionId, status) => {
-    sessionManager.updateStatus(sessionId, status);
-    broadcast('session:status-changed', { sessionId, status });
 
-    if (status === 'needs-attention') {
-      const session = sessionManager.getSession(sessionId);
-      if (session) {
-        notifyIfNeeded(session.name, isAppFocused());
-      }
-    }
-  });
-
-  function persistSessions(): void {
-    const sessions = sessionManager.getAll();
-    sessionStore.save(sessions.map((s) => ({ name: s.name, cwd: s.cwd, command: s.command })));
-  }
-
-  // Restore saved local sessions on startup (only when no daemons configured)
-  if (!connectionManager.hasDaemons()) {
-    const savedSessions = sessionStore.load();
-    for (const saved of savedSessions) {
-      try {
-        const session = sessionManager.spawn({
-          name: saved.name,
-          cwd: saved.cwd,
-          command: saved.command,
-        });
-        idleDetector.addSession(session.id);
-      } catch {
-        // Skip sessions that fail to restore
-      }
-    }
-  }
-
-  // --- Session commands (route to daemon or local) ---
+  // --- Session commands (all route to daemon) ---
 
   ipcMain.handle('pty:spawn', (_event, args: { name: string; cwd: string; command?: string; daemonId?: string }) => {
     if (!args || typeof args.name !== 'string' || !args.name.trim()) {
@@ -62,29 +24,12 @@ export function registerIpcHandlers(sessionManager: SessionManager, connectionMa
     }
 
     const daemonId = args.daemonId || connectionManager.getDefaultDaemonId();
-    console.log(`[pty:spawn] daemonId=${daemonId}, statuses=${JSON.stringify(connectionManager.getConnectionStatuses())}`);
-    if (daemonId) {
-      // Route to daemon
-      try {
-        connectionManager.spawn(daemonId, args.name.trim(), args.cwd.trim(), args.command?.trim());
-      } catch (err) {
-        console.error('[pty:spawn] daemon spawn failed:', err);
-        throw err;
-      }
-      // Session will arrive via daemon:session-created broadcast
-      return null; // Async — renderer will get the session via event
+    if (!daemonId) {
+      throw new Error('No daemon connected. Add one in Preferences → Daemons.');
     }
 
-    // Local fallback
-    console.log('[pty:spawn] no daemon — using local PTY');
-    const session = sessionManager.spawn({
-      name: args.name.trim(),
-      cwd: args.cwd.trim(),
-      command: args.command?.trim() || undefined,
-    });
-    idleDetector.addSession(session.id);
-    persistSessions();
-    return session;
+    connectionManager.spawn(daemonId, args.name.trim(), args.cwd.trim(), args.command?.trim());
+    return null;
   });
 
   ipcMain.handle('pty:resize', (_event, args: { sessionId: string; cols: number; rows: number }) => {
@@ -94,62 +39,32 @@ export function registerIpcHandlers(sessionManager: SessionManager, connectionMa
     if (typeof args.cols !== 'number' || typeof args.rows !== 'number') {
       throw new Error('pty:resize requires numeric cols and rows');
     }
-
-    if (args.sessionId.includes(':')) {
-      connectionManager.resize(args.sessionId, args.cols, args.rows);
-    } else {
-      sessionManager.resize(args.sessionId, args.cols, args.rows);
-    }
+    connectionManager.resize(args.sessionId, args.cols, args.rows);
   });
 
   ipcMain.handle('pty:close', (_event, args: { sessionId: string }) => {
     if (!args || typeof args.sessionId !== 'string') {
       throw new Error('pty:close requires a sessionId');
     }
-
-    if (args.sessionId.includes(':')) {
-      connectionManager.close(args.sessionId);
-    } else {
-      idleDetector.removeSession(args.sessionId);
-      sessionManager.close(args.sessionId);
-      persistSessions();
-    }
+    connectionManager.close(args.sessionId);
   });
 
   ipcMain.handle('session:list', () => {
-    const localSessions = sessionManager.getAll();
-    const daemonSessions = connectionManager.getAllSessions();
-    return [...localSessions, ...daemonSessions];
+    return connectionManager.getAllSessions();
   });
 
   ipcMain.handle('session:rename', (_event, args: { sessionId: string; name: string }) => {
     if (!args || typeof args.sessionId !== 'string' || typeof args.name !== 'string' || !args.name.trim()) {
       throw new Error('session:rename requires sessionId and non-empty name');
     }
-
-    if (args.sessionId.includes(':')) {
-      connectionManager.rename(args.sessionId, args.name.trim());
-    } else {
-      broadcast('session:renamed', { sessionId: args.sessionId, name: args.name.trim() });
-      persistSessions();
-    }
+    connectionManager.rename(args.sessionId, args.name.trim());
   });
 
   ipcMain.on('pty:input', (_event, args: { sessionId: string; data: string }) => {
     if (!args || typeof args.sessionId !== 'string' || typeof args.data !== 'string') {
       return;
     }
-
-    if (args.sessionId.includes(':')) {
-      connectionManager.input(args.sessionId, args.data);
-    } else {
-      try {
-        idleDetector.onInput(args.sessionId);
-        sessionManager.write(args.sessionId, args.data);
-      } catch {
-        // Session may have been closed
-      }
-    }
+    connectionManager.input(args.sessionId, args.data);
   });
 
   // --- Daemon connection management ---
@@ -213,18 +128,5 @@ export function registerIpcHandlers(sessionManager: SessionManager, connectionMa
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
-  });
-
-  // --- Wire up local session manager events ---
-
-  sessionManager.setOnData((sessionId: string, data: string) => {
-    idleDetector.onOutput(sessionId, data);
-    broadcast('pty:data', { sessionId, data });
-  });
-
-  sessionManager.setOnExit((sessionId: string, exitCode: number) => {
-    idleDetector.removeSession(sessionId);
-    broadcast('pty:exit', { sessionId, exitCode });
-    persistSessions();
   });
 }

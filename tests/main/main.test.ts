@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock electron modules
 const mockLoadURL = vi.fn();
 const mockLoadFile = vi.fn();
 
@@ -33,23 +32,35 @@ vi.mock('electron', () => {
       handle: vi.fn(),
       on: vi.fn(),
     },
+    dialog: {
+      showOpenDialog: vi.fn(),
+    },
   };
 });
 
 vi.mock('ws', () => ({
-  WebSocket: vi.fn(),
+  WebSocket: vi.fn().mockImplementation(() => ({
+    on: vi.fn(),
+    send: vi.fn(),
+    close: vi.fn(),
+    readyState: 0,
+  })),
   WebSocketServer: vi.fn(),
 }));
 
-vi.mock('node-pty', () => ({
-  spawn: vi.fn().mockReturnValue({
-    pid: 1,
-    write: vi.fn(),
-    resize: vi.fn(),
-    kill: vi.fn(),
-    onData: vi.fn(),
-    onExit: vi.fn(),
-  }),
+vi.mock('../../src/main/local-daemon', () => ({
+  LocalDaemon: vi.fn().mockImplementation(() => ({
+    start: vi.fn().mockResolvedValue({
+      id: 'localhost',
+      name: 'Localhost',
+      host: '127.0.0.1',
+      port: 3717,
+      token: 'test',
+      fingerprint: 'test',
+      autoConnect: true,
+    }),
+    stop: vi.fn(),
+  })),
 }));
 
 describe('createWindow', () => {
@@ -63,7 +74,6 @@ describe('createWindow', () => {
     const { createWindow } = await import('../../src/main/main');
     createWindow();
 
-    // Find the call from our explicit createWindow() (last call)
     const lastCall = allConstructorCalls[allConstructorCalls.length - 1];
     const prefs = lastCall.webPreferences as Record<string, unknown>;
 

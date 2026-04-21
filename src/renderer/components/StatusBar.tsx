@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePreferences } from '../state/preferences';
 import { useSessions } from '../state/sessions';
 
@@ -7,9 +7,30 @@ export default function StatusBar(): React.ReactElement {
   const { state } = useSessions();
   const { uiColors } = prefs;
 
+  const [daemons, setDaemons] = useState<Array<{ id: string; status: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      window.switchboard.daemon.statuses().then((s) => {
+        if (!cancelled) setDaemons(s.map((d) => ({ id: d.id, status: d.status })));
+      });
+    };
+    refresh();
+    const offStatus = window.switchboard.daemon.onStatusChanged(() => refresh());
+    const offConnected = window.switchboard.daemon.onConnected(() => refresh());
+    return () => {
+      cancelled = true;
+      offStatus();
+      offConnected();
+    };
+  }, []);
+
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId);
   const sessionCount = state.sessions.length;
   const unreadCount = state.unreadSessions.size;
+  const connectedDaemons = daemons.filter((d) => d.status === 'connected').length;
+  const totalDaemons = daemons.length;
 
   return (
     <div
@@ -36,6 +57,11 @@ export default function StatusBar(): React.ReactElement {
         )}
       </div>
       <div style={{ display: 'flex', gap: 16 }}>
+        {totalDaemons > 0 && (
+          <span data-testid="daemon-count">
+            {connectedDaemons}/{totalDaemons} daemon{totalDaemons !== 1 ? 's' : ''}
+          </span>
+        )}
         <span>{sessionCount} session{sessionCount !== 1 ? 's' : ''}</span>
         {unreadCount > 0 && (
           <span style={{ color: uiColors.accentPrimary }}>

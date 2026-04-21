@@ -1,13 +1,13 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
-import { SessionManager } from './session-manager';
 import { ConnectionManager } from './connection-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { PreferencesStore } from './preferences-store';
+import { LocalDaemon } from './local-daemon';
 
 let mainWindow: BrowserWindow | null = null;
-const sessionManager = new SessionManager();
 const connectionManager = new ConnectionManager();
+const localDaemon = new LocalDaemon();
 
 const isDev = !app.isPackaged;
 
@@ -36,8 +36,7 @@ export function createWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(() => {
-  // Load daemon connections from preferences
+app.whenReady().then(async () => {
   const prefsStore = new PreferencesStore();
   const prefs = prefsStore.load();
   const daemonConnections = (prefs as any).daemonConnections || [];
@@ -47,10 +46,18 @@ app.whenReady().then(() => {
     }
   }
 
-  registerIpcHandlers(sessionManager, connectionManager);
+  if (daemonConnections.length === 0) {
+    try {
+      const localConfig = await localDaemon.start();
+      connectionManager.addConnection(localConfig);
+    } catch (err) {
+      console.error('Failed to auto-start localhost daemon:', err);
+    }
+  }
+
+  registerIpcHandlers(connectionManager);
   mainWindow = createWindow();
 
-  // Intercept Ctrl+Tab / Ctrl+Shift+Tab before Chromium eats them
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.key === 'Tab') {
       event.preventDefault();
@@ -58,7 +65,6 @@ app.whenReady().then(() => {
     }
   });
 
-  // Auto-connect to configured daemons
   connectionManager.connectAll();
 
   app.on('activate', () => {
@@ -74,5 +80,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   connectionManager.disconnectAll();
-  sessionManager.closeAll();
+  localDaemon.stop();
 });
