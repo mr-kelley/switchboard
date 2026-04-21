@@ -1,13 +1,14 @@
 # Project State — Switchboard
 
 ## Project Overview
-Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals, and node-pty backend. Repository: `gits/switchboard`. Current phase: **Daemon (v3) — Sprint 15 pending**.
+Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals. PTYs run on a standalone daemon process; the Electron client is a daemon client. Repository: `gits/switchboard`. Current phase: **Daemon (v3) complete — between milestones**.
 
 ## Active Work
-- **Milestone:** Daemon (v3) — Sprints 12–14 complete; pairing flow and UI integration complete; live-verified 2026-04-21.
-- **Next sprint:** Sprint 15 (Client Integration) — remove direct node-pty from Electron so all sessions (including localhost) are daemon-managed.
+- **Milestone:** Daemon (v3) — complete, merged to main 2026-04-21.
+- **Next up:** Triage before starting Flow II (v4). Follow-up issue #26 (persist daemon pairings across client restarts) is a prerequisite for remote-daemon UX to be practical; should land before v4 sprints start.
 
 ## Recent Completions
+- Sprint 15: Client Integration — local node-pty removed, localhost daemon auto-start, StatusBar daemon count — PR #27 merged — 2026-04-21.
 - Pairing flow live-verified end-to-end (workstation ↔ daemon on VM) — 2026-04-21.
 - Sprint 14: Client connection manager — commit `1ed9207` — 2026-04-20.
 - Sprint 13: Daemon transport (WebSocket+TLS, auth) — commit `1c8a543` — 2026-04-20.
@@ -35,7 +36,7 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 |---|------|--------|
 | 1 | Core MVP | completed |
 | 2 | Flow | completed |
-| 3 | Daemon | in progress |
+| 3 | Daemon | completed |
 | 4 | Flow II | planned |
 | 5 | Intelligence | planned |
 
@@ -52,9 +53,9 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `src/renderer/hooks/` — useKeyboardShortcuts.ts.
 - `src/shared/` — types.ts, themes.ts.
 - `src/daemon/` — Standalone daemon: daemon.ts (entry), config.ts, pty-manager.ts, idle-detector.ts, output-buffer.ts, session-store.ts, transport.ts, auth.ts.
-- `src/main/connection-manager.ts` — Client-side bridge to daemon(s).
-- `sprints/daemon/` — 4 sprint files (12–15); 12–14 complete, 15 pending.
-- `tests/` — 30 test files, 251 tests passing.
+- `src/main/` — Electron main: main.ts, preload.ts, ipc-handlers.ts, connection-manager.ts (bridge to daemon), local-daemon.ts (child-process lifecycle), preferences-store.ts, notifications.ts.
+- `sprints/daemon/` — 4 sprint files (12–15), all complete.
+- `tests/` — 27 test files, 222 tests passing.
 
 ## Key Decisions
 - DEC-000001: Retire v3 Intelligence; introduce v3 Daemon, v4 Flow II, v5 Intelligence. Daemon-first architecture to support remote sessions and session mobility.
@@ -65,6 +66,6 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 ## Session Notes
 Daemon (v3) architecture planned and largely built. Client-server split: standalone daemon process manages PTYs on any host; Electron client connects via WebSocket + TLS. All original backlog items (B-01 through B-09) reassigned to v4 (client UX) and v5 (intelligence, daemon-side). GitHub Issues #21 and #22 solved structurally by daemon design. Five bug issues (#13, #14, #15, #16, #20) assigned to collaborator LachrymaGhost.
 
-Sprints 12–14 implemented the daemon core, transport, and client connection manager. A 6-digit pairing flow (like Bluetooth pairing) was added on top to replace manual connection-string copy-paste. Live-tested 2026-04-21: workstation client paired with daemon on VM (10.0.0.153:3717), created session, bidirectional I/O confirmed.
+Sprints 12–14 implemented the daemon core, transport, and client connection manager. A 6-digit pairing flow (like Bluetooth pairing) was added on top to replace manual connection-string copy-paste. Sprint 15 removed the local node-pty fallback and added localhost daemon auto-start, completing the "all sessions are daemon-managed" observable. Live-tested 2026-04-21 end-to-end: zero-config localhost auto-start and remote pairing both verified.
 
-Sprint 15 (Client Integration) remains: remove the local node-pty fallback path so the client is always a daemon client — this is the roadmap observable "All sessions — including localhost — are daemon-managed."
+Known follow-up: Issue #26 — daemon pairings are held in memory only; they don't round-trip through `preferences.json`, so remote pairings are lost on client restart. Should land before Flow II sprints begin.
