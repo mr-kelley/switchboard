@@ -10,6 +10,7 @@ export const LOCALHOST_DAEMON_ID = 'localhost';
 
 export class LocalDaemon {
   private process: ChildProcess | null = null;
+  private stderrBuffer = '';
 
   async start(): Promise<DaemonConnectionConfig> {
     const daemonScript = this.resolveDaemonScript();
@@ -27,7 +28,12 @@ export class LocalDaemon {
       process.stdout.write(`[daemon] ${chunk.toString()}`);
     });
     this.process.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(`[daemon] ${chunk.toString()}`);
+      const text = chunk.toString();
+      this.stderrBuffer += text;
+      if (this.stderrBuffer.length > 8192) {
+        this.stderrBuffer = this.stderrBuffer.slice(-8192);
+      }
+      process.stderr.write(`[daemon] ${text}`);
     });
 
     await this.waitForReady();
@@ -86,7 +92,9 @@ export class LocalDaemon {
 
       this.process.once('exit', (code) => {
         clearTimeout(timeout);
-        reject(new Error(`Daemon exited with code ${code}`));
+        const tail = this.stderrBuffer.trim();
+        const detail = tail ? `: ${tail}` : '';
+        reject(new Error(`Daemon exited with code ${code}${detail}`));
       });
     });
   }
