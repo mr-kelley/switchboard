@@ -67,6 +67,20 @@ export function registerIpcHandlers(connectionManager: ConnectionManager): void 
     connectionManager.input(args.sessionId, args.data);
   });
 
+  ipcMain.handle('session:queue-prompt', (_event, args: { sessionId: string; text: string }) => {
+    if (!args || typeof args.sessionId !== 'string' || typeof args.text !== 'string') {
+      throw new Error('session:queue-prompt requires sessionId and text');
+    }
+    connectionManager.queuePrompt(args.sessionId, args.text);
+  });
+
+  ipcMain.handle('session:clear-queue', (_event, args: { sessionId: string }) => {
+    if (!args || typeof args.sessionId !== 'string') {
+      throw new Error('session:clear-queue requires sessionId');
+    }
+    connectionManager.clearQueue(args.sessionId);
+  });
+
   // --- Daemon connection management ---
 
   ipcMain.handle('daemon:add', (_event, config: DaemonConnectionConfig) => {

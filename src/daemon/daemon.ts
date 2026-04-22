@@ -5,6 +5,7 @@ import { PtyManager } from './pty-manager';
 import { IdleDetector } from './idle-detector';
 import { OutputBuffer } from './output-buffer';
 import { SessionStore } from './session-store';
+import { QueuedPrompts } from './queued-prompts';
 import { TransportServer, type ClientConnection } from './transport';
 import type { ClientMessage, SessionInfo } from '../shared/protocol';
 
@@ -15,6 +16,7 @@ export class Daemon {
   private idleDetector: IdleDetector;
   private buffers = new Map<string, OutputBuffer>();
   private sessionStore: SessionStore;
+  private queuedPrompts: QueuedPrompts;
   private transport: TransportServer;
   private config: ReturnType<typeof loadConfig>;
   private persistTimer: ReturnType<typeof setInterval> | null = null;
@@ -23,8 +25,10 @@ export class Daemon {
     this.config = loadConfig(configPath);
 
     this.sessionStore = new SessionStore(this.config.sessionPersistPath);
+    this.queuedPrompts = new QueuedPrompts(this.config.sessionPersistPath);
 
-    // Idle detector fires status changes → broadcast to clients
+    // Idle detector fires status changes → broadcast to clients; fire queued prompts
+    // on transition into needs-attention.
     this.idleDetector = new IdleDetector((sessionId, status) => {
       this.ptyManager.updateStatus(sessionId, status);
       this.transport.broadcast({
@@ -32,6 +36,23 @@ export class Daemon {
         sessionId,
         status,
       });
+
+      if (status === 'needs-attention') {
+        const queued = this.queuedPrompts.consume(sessionId);
+        if (queued) {
+          try {
+            this.idleDetector.onInput(sessionId);
+            this.ptyManager.write(sessionId, queued + '\r');
+          } catch {
+            // Session may have been closed before we got here
+          }
+          this.transport.broadcast({
+            type: 'session:queue-updated',
+            sessionId,
+            text: null,
+          });
+        }
+      }
     });
 
     // PTY manager
@@ -53,6 +74,7 @@ export class Daemon {
 
     this.ptyManager.setOnExit((sessionId, exitCode) => {
       this.idleDetector.removeSession(sessionId);
+      this.queuedPrompts.removeSession(sessionId);
       this.transport.broadcast({
         type: 'session:closed',
         sessionId,
@@ -125,11 +147,12 @@ export class Daemon {
   }
 
   private handleClientConnect(conn: ClientConnection): void {
-    // Send session list
+    // Send session list with current queue state
     const sessions = this.ptyManager.getAll();
     this.transport.send(conn.id, {
       type: 'session:list',
       sessions,
+      queuedPrompts: this.queuedPrompts.snapshot(),
     });
 
     // Replay buffers for each session
@@ -179,7 +202,14 @@ export class Daemon {
         this.transport.send(conn.id, {
           type: 'session:list',
           sessions: this.ptyManager.getAll(),
+          queuedPrompts: this.queuedPrompts.snapshot(),
         });
+        break;
+      case 'session:queue-prompt':
+        this.handleQueuePrompt(conn, msg.sessionId, msg.text);
+        break;
+      case 'session:clear-queue':
+        this.handleClearQueue(msg.sessionId);
         break;
       default:
         this.transport.send(conn.id, {
@@ -237,6 +267,7 @@ export class Daemon {
     try {
       this.idleDetector.removeSession(sessionId);
       this.ptyManager.close(sessionId);
+      this.queuedPrompts.removeSession(sessionId);
       this.transport.broadcast({
         type: 'session:closed',
         sessionId,
@@ -250,6 +281,42 @@ export class Daemon {
     } catch {
       // Session may already be closed
     }
+  }
+
+  private handleQueuePrompt(conn: ClientConnection, sessionId: string, text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      this.transport.send(conn.id, {
+        type: 'session:queue-rejected',
+        sessionId,
+        reason: 'Prompt is empty',
+      });
+      return;
+    }
+    const accepted = this.queuedPrompts.tryQueue(sessionId, trimmed);
+    if (!accepted) {
+      this.transport.send(conn.id, {
+        type: 'session:queue-rejected',
+        sessionId,
+        reason: 'A prompt is already queued for this session',
+      });
+      return;
+    }
+    this.transport.broadcast({
+      type: 'session:queue-updated',
+      sessionId,
+      text: trimmed,
+    });
+  }
+
+  private handleClearQueue(sessionId: string): void {
+    if (!this.queuedPrompts.get(sessionId)) return;
+    this.queuedPrompts.clear(sessionId);
+    this.transport.broadcast({
+      type: 'session:queue-updated',
+      sessionId,
+      text: null,
+    });
   }
 
   private handleRename(sessionId: string, name: string): void {

@@ -8,6 +8,7 @@ interface SortableSessionTabProps {
   session: SessionInfo;
   isActive: boolean;
   hasUnread?: boolean;
+  hasQueuedPrompt?: boolean;
   onSelect: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -16,6 +17,7 @@ export default function SortableSessionTab({
   session,
   isActive,
   hasUnread,
+  hasQueuedPrompt,
   onSelect,
   onContextMenu,
 }: SortableSessionTabProps): React.ReactElement {
@@ -47,6 +49,7 @@ export default function SortableSessionTab({
         session={session}
         isActive={isActive}
         hasUnread={hasUnread}
+        hasQueuedPrompt={hasQueuedPrompt}
         onSelect={onSelect}
         onContextMenu={onContextMenu}
       />

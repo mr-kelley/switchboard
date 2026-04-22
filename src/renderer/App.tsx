@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { SessionsProvider, useSessions } from './state/sessions';
 import { PreferencesProvider, usePreferences } from './state/preferences';
+import { QueuedPromptsProvider } from './state/queued-prompts';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -16,6 +17,7 @@ function AppContent(): React.ReactElement {
   const [prefsModalOpen, setPrefsModalOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchVisible, setSearchVisible] = useState(false);
+  const [queueBarSessionId, setQueueBarSessionId] = useState<string | null>(null);
 
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId) || null;
 
@@ -69,6 +71,7 @@ function AppContent(): React.ReactElement {
   }, [prefs.customCssPath]);
 
   // Listen for session status changes from idle detector
+  // (Queued-prompt firing happens daemon-side; this hook just tracks the UI state.)
   useEffect(() => {
     const unsubStatus = window.switchboard.session.onStatusChanged((sessionId, status) => {
       updateSessionStatus(sessionId, status as import('../shared/types').SessionStatus);
@@ -127,7 +130,11 @@ function AppContent(): React.ReactElement {
     'terminal:zoom-out': () => updatePrefs({ terminalFontSize: Math.max(8, prefs.terminalFontSize - 1) }),
     'terminal:zoom-reset': () => updatePrefs({ terminalFontSize: 14 }),
     'terminal:search': () => setSearchVisible((v) => !v),
-  }), [closeActiveSession, cycleSession, selectSessionByIndex, prefs.terminalFontSize, updatePrefs]);
+    'session:queue': () => {
+      if (!state.activeSessionId) return;
+      setQueueBarSessionId((prev) => (prev === state.activeSessionId ? null : state.activeSessionId));
+    },
+  }), [closeActiveSession, cycleSession, selectSessionByIndex, prefs.terminalFontSize, updatePrefs, state.activeSessionId]);
 
   useKeyboardShortcuts(prefs.shortcuts, shortcutHandlers);
 
@@ -184,6 +191,8 @@ function AppContent(): React.ReactElement {
                 visible={session.id === state.activeSessionId}
                 searchVisible={searchVisible && session.id === state.activeSessionId}
                 onSearchClose={() => setSearchVisible(false)}
+                queueBarVisible={queueBarSessionId === session.id}
+                onQueueBarClose={() => setQueueBarSessionId(null)}
               />
             ))
           )}
@@ -207,7 +216,9 @@ export default function App(): React.ReactElement {
   return (
     <PreferencesProvider>
       <SessionsProvider>
-        <AppContent />
+        <QueuedPromptsProvider>
+          <AppContent />
+        </QueuedPromptsProvider>
       </SessionsProvider>
     </PreferencesProvider>
   );

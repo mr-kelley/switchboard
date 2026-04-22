@@ -6,11 +6,12 @@ interface SessionTabProps {
   session: SessionInfo;
   isActive: boolean;
   hasUnread?: boolean;
+  hasQueuedPrompt?: boolean;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export default function SessionTab({ session, isActive, hasUnread, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
+export default function SessionTab({ session, isActive, hasUnread, hasQueuedPrompt, onSelect, onContextMenu }: SessionTabProps): React.ReactElement {
   const { prefs } = usePreferences();
   const { uiColors } = prefs;
 
@@ -58,6 +59,19 @@ export default function SessionTab({ session, isActive, hasUnread, onSelect, onC
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
         {session.name}
       </span>
+      {hasQueuedPrompt && (
+        <span
+          data-testid={`queued-indicator-${session.id}`}
+          title="A prompt is queued for this session"
+          style={{
+            fontSize: 11,
+            color: uiColors.accentPrimary,
+            flexShrink: 0,
+          }}
+        >
+          ✎
+        </span>
+      )}
       {hasUnread && !isActive && (
         <span
           data-testid={`unread-badge-${session.id}`}

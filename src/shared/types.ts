@@ -126,6 +126,11 @@ export interface SwitchboardAPI {
     list(): Promise<SessionInfo[]>;
     onStatusChanged(callback: (sessionId: string, status: SessionStatus) => void): () => void;
     onSessionCreated(callback: (session: SessionInfo) => void): () => void;
+    queuePrompt(sessionId: string, text: string): Promise<void>;
+    clearQueue(sessionId: string): Promise<void>;
+    onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void;
+    onQueueRejected(callback: (sessionId: string, reason: string) => void): () => void;
+    onQueueSync(callback: (queuedPrompts: Record<string, string>) => void): () => void;
   };
   daemon: {
     add(config: { id: string; name: string; host: string; port: number; token: string; fingerprint: string; autoConnect: boolean }): Promise<void>;
