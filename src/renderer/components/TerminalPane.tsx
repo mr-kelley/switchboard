@@ -4,12 +4,15 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { usePreferences } from '../state/preferences';
+import QueuedPromptBar from './QueuedPromptBar';
 
 interface TerminalPaneProps {
   sessionId: string;
   visible: boolean;
   searchVisible?: boolean;
   onSearchClose?: () => void;
+  queueBarVisible?: boolean;
+  onQueueBarClose?: () => void;
 }
 
 /** Convert a hex color to an rgba() string with the given alpha. */
@@ -50,7 +53,7 @@ function tryAttachSearch(terminal: Terminal): { findNext: (query: string) => boo
   }
 }
 
-export default function TerminalPane({ sessionId, visible, searchVisible, onSearchClose }: TerminalPaneProps): React.ReactElement {
+export default function TerminalPane({ sessionId, visible, searchVisible, onSearchClose, queueBarVisible, onQueueBarClose }: TerminalPaneProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -165,6 +168,23 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
       }
     }
   }, [prefs.terminalColors, prefs.terminalFontFamily, prefs.terminalFontSize, prefs.terminalLineHeight, prefs.cursorBlink, prefs.scrollbackLines, prefs.terminalBackgroundImage, prefs.terminalBackgroundOpacity, sessionId]);
+
+  // Re-fit when the queue bar toggles — the container height changes.
+  useEffect(() => {
+    if (!visibleRef.current) return;
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon) return;
+    const timer = setTimeout(() => {
+      try {
+        fitAddon.fit();
+        window.switchboard.pty.resize(sessionId, terminal.cols, terminal.rows);
+      } catch {
+        // Ignore fit errors during transitions
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [queueBarVisible, sessionId]);
 
   // Re-fit, re-attach WebGL, and focus when visibility changes
   useEffect(() => {
@@ -308,10 +328,13 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
           top: 0,
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: queueBarVisible ? 40 : 0,
           zIndex: 1,
         }}
       />
+      {queueBarVisible && onQueueBarClose && (
+        <QueuedPromptBar sessionId={sessionId} onClose={onQueueBarClose} />
+      )}
     </div>
   );
 }

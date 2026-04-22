@@ -31,6 +31,11 @@ beforeEach(() => {
       list: vi.fn().mockResolvedValue([]),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
       onSessionCreated: vi.fn().mockReturnValue(() => {}),
+      queuePrompt: vi.fn().mockResolvedValue(undefined),
+      clearQueue: vi.fn().mockResolvedValue(undefined),
+      onQueueUpdated: vi.fn().mockReturnValue(() => {}),
+      onQueueRejected: vi.fn().mockReturnValue(() => {}),
+      onQueueSync: vi.fn().mockReturnValue(() => {}),
     },
     daemon: {
       add: vi.fn().mockResolvedValue(undefined),

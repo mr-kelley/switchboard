@@ -79,6 +79,17 @@ export interface PairResponseMessage extends BaseMessage {
   code: string;
 }
 
+export interface SessionQueuePromptMessage extends BaseMessage {
+  type: 'session:queue-prompt';
+  sessionId: string;
+  text: string;
+}
+
+export interface SessionClearQueueMessage extends BaseMessage {
+  type: 'session:clear-queue';
+  sessionId: string;
+}
+
 export type ClientMessage =
   | AuthMessage
   | SessionSpawnMessage
@@ -89,7 +100,9 @@ export type ClientMessage =
   | SessionListRequestMessage
   | PingMessage
   | PairRequestMessage
-  | PairResponseMessage;
+  | PairResponseMessage
+  | SessionQueuePromptMessage
+  | SessionClearQueueMessage;
 
 // --- Daemon → Client ---
 
@@ -137,6 +150,19 @@ export interface SessionRenamedMessage extends BaseMessage {
 export interface SessionListMessage extends BaseMessage {
   type: 'session:list';
   sessions: SessionInfo[];
+  queuedPrompts?: Record<string, string>;
+}
+
+export interface SessionQueueUpdatedMessage extends BaseMessage {
+  type: 'session:queue-updated';
+  sessionId: string;
+  text: string | null;
+}
+
+export interface SessionQueueRejectedMessage extends BaseMessage {
+  type: 'session:queue-rejected';
+  sessionId: string;
+  reason: string;
 }
 
 export interface ReplayBeginMessage extends BaseMessage {
@@ -195,6 +221,8 @@ export type DaemonMessage =
   | SessionStatusMessage
   | SessionRenamedMessage
   | SessionListMessage
+  | SessionQueueUpdatedMessage
+  | SessionQueueRejectedMessage
   | ReplayBeginMessage
   | ReplayDataMessage
   | ReplayEndMessage

@@ -3,6 +3,7 @@ import { DndContext, closestCenter, DragEndEvent, Modifier, useSensor, useSensor
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { useSessions } from '../state/sessions';
 import { usePreferences } from '../state/preferences';
+import { useQueuedPrompts } from '../state/queued-prompts';
 import SortableSessionTab from './SortableSessionTab';
 import ContextMenu from './ContextMenu';
 
@@ -20,6 +21,7 @@ interface ContextMenuState {
 export default function Sidebar(): React.ReactElement {
   const { state, setActiveSession, removeSession, updateSessionName, reorderSessions } = useSessions();
   const { prefs, updatePrefs } = usePreferences();
+  const { state: queuedState } = useQueuedPrompts();
   const { uiColors } = prefs;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -135,6 +137,7 @@ export default function Sidebar(): React.ReactElement {
                   session={session}
                   isActive={session.id === state.activeSessionId}
                   hasUnread={state.unreadSessions.has(session.id)}
+                  hasQueuedPrompt={session.id in queuedState.queued}
                   onSelect={() => setActiveSession(session.id)}
                   onContextMenu={(e) => handleContextMenu(session.id, e)}
                 />

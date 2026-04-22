@@ -1,6 +1,6 @@
 import type { SessionStatus } from '../shared/protocol';
 
-const DEFAULT_PROMPT_PATTERN = /^[>❯$#]\s*$/m;
+const DEFAULT_PROMPT_PATTERN = /[>❯$#]\s*$/m;
 const IDLE_TIMEOUT_MS = 10_000;
 const MIN_ACTIVITY_MS = 2_000;
 

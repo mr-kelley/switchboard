@@ -60,6 +60,33 @@ const api = {
       ipcRenderer.on('daemon:session-created', handler);
       return () => ipcRenderer.removeListener('daemon:session-created', handler);
     },
+    queuePrompt(sessionId: string, text: string) {
+      return ipcRenderer.invoke('session:queue-prompt', { sessionId, text });
+    },
+    clearQueue(sessionId: string) {
+      return ipcRenderer.invoke('session:clear-queue', { sessionId });
+    },
+    onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { sessionId: string; text: string | null }) => {
+        callback(args.sessionId, args.text);
+      };
+      ipcRenderer.on('session:queue-updated', handler);
+      return () => ipcRenderer.removeListener('session:queue-updated', handler);
+    },
+    onQueueRejected(callback: (sessionId: string, reason: string) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { sessionId: string; reason: string }) => {
+        callback(args.sessionId, args.reason);
+      };
+      ipcRenderer.on('session:queue-rejected', handler);
+      return () => ipcRenderer.removeListener('session:queue-rejected', handler);
+    },
+    onQueueSync(callback: (queuedPrompts: Record<string, string>) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, args: { queuedPrompts: Record<string, string> }) => {
+        callback(args.queuedPrompts);
+      };
+      ipcRenderer.on('session:queue-sync', handler);
+      return () => ipcRenderer.removeListener('session:queue-sync', handler);
+    },
   },
   daemon: {
     add(config: { id: string; name: string; host: string; port: number; token: string; fingerprint: string; autoConnect: boolean }) {

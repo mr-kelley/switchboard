@@ -254,6 +254,18 @@ export class ConnectionManager {
     this.sendToDaemon(found.conn, { type: 'session:rename', sessionId: found.sessionId, name });
   }
 
+  queuePrompt(compositeId: string, text: string): void {
+    const found = this.findConnection(compositeId);
+    if (!found) return;
+    this.sendToDaemon(found.conn, { type: 'session:queue-prompt', sessionId: found.sessionId, text });
+  }
+
+  clearQueue(compositeId: string): void {
+    const found = this.findConnection(compositeId);
+    if (!found) return;
+    this.sendToDaemon(found.conn, { type: 'session:clear-queue', sessionId: found.sessionId });
+  }
+
   /**
    * Get the first connected daemon ID (convenience for single-daemon setups).
    */
@@ -455,6 +467,14 @@ export class ConnectionManager {
             daemonName: conn.config.name,
           });
         }
+        // Re-broadcast the queue snapshot as composite-keyed to the renderer
+        if (msg.queuedPrompts) {
+          const composite: Record<string, string> = {};
+          for (const [sid, text] of Object.entries(msg.queuedPrompts)) {
+            composite[`${conn.config.id}:${sid}`] = text;
+          }
+          broadcast('session:queue-sync', { queuedPrompts: composite });
+        }
         break;
 
       case 'session:created': {
@@ -494,6 +514,18 @@ export class ConnectionManager {
         }
         const compositeId = `${conn.config.id}:${msg.sessionId}`;
         broadcast('session:status-changed', { sessionId: compositeId, status: msg.status });
+        break;
+      }
+
+      case 'session:queue-updated': {
+        const compositeId = `${conn.config.id}:${msg.sessionId}`;
+        broadcast('session:queue-updated', { sessionId: compositeId, text: msg.text });
+        break;
+      }
+
+      case 'session:queue-rejected': {
+        const compositeId = `${conn.config.id}:${msg.sessionId}`;
+        broadcast('session:queue-rejected', { sessionId: compositeId, reason: msg.reason });
         break;
       }
 
