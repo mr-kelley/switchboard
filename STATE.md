@@ -5,9 +5,10 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 
 ## Active Work
 - **Milestone:** Daemon (v3) — complete, merged to main 2026-04-21.
-- **Next up:** Triage before starting Flow II (v4). Follow-up issue #26 (persist daemon pairings across client restarts) is a prerequisite for remote-daemon UX to be practical; should land before v4 sprints start.
+- **Next up:** Flow II (v4) sprint planning. No active sprint yet.
 
 ## Recent Completions
+- Daemon pairings persist across client restarts (#26) — PR #29 merged — 2026-04-22.
 - Sprint 15: Client Integration — local node-pty removed, localhost daemon auto-start, StatusBar daemon count — PR #27 merged — 2026-04-21.
 - Pairing flow live-verified end-to-end (workstation ↔ daemon on VM) — 2026-04-21.
 - Sprint 14: Client connection manager — commit `1ed9207` — 2026-04-20.
@@ -46,16 +47,15 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `decisions/` — Decision log.
 - `sprints/core-mvp/` — 6 completed sprint files.
 - `sprints/flow/` — 5 completed sprint files.
-- `src/main/` — Electron main process: main.ts, preload.ts, session-manager.ts, ipc-handlers.ts, idle-detector.ts, session-store.ts, preferences-store.ts, notifications.ts.
+- `src/main/` — Electron main: main.ts, preload.ts, ipc-handlers.ts, connection-manager.ts (bridge to daemon), local-daemon.ts (child-process lifecycle), preferences-store.ts, notifications.ts.
 - `src/renderer/` — React renderer: App.tsx, main.tsx, index.html.
 - `src/renderer/components/` — TerminalPane, Sidebar, SessionTab, SortableSessionTab, Header, NewSessionModal, ContextMenu, PreferencesModal, StatusBar.
 - `src/renderer/state/` — sessions.tsx, preferences.tsx (React context + reducer).
 - `src/renderer/hooks/` — useKeyboardShortcuts.ts.
-- `src/shared/` — types.ts, themes.ts.
+- `src/shared/` — types.ts, themes.ts, protocol.ts.
 - `src/daemon/` — Standalone daemon: daemon.ts (entry), config.ts, pty-manager.ts, idle-detector.ts, output-buffer.ts, session-store.ts, transport.ts, auth.ts.
-- `src/main/` — Electron main: main.ts, preload.ts, ipc-handlers.ts, connection-manager.ts (bridge to daemon), local-daemon.ts (child-process lifecycle), preferences-store.ts, notifications.ts.
 - `sprints/daemon/` — 4 sprint files (12–15), all complete.
-- `tests/` — 27 test files, 222 tests passing.
+- `tests/` — 28 test files, 226 tests passing.
 
 ## Key Decisions
 - DEC-000001: Retire v3 Intelligence; introduce v3 Daemon, v4 Flow II, v5 Intelligence. Daemon-first architecture to support remote sessions and session mobility.
@@ -66,6 +66,6 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 ## Session Notes
 Daemon (v3) architecture planned and largely built. Client-server split: standalone daemon process manages PTYs on any host; Electron client connects via WebSocket + TLS. All original backlog items (B-01 through B-09) reassigned to v4 (client UX) and v5 (intelligence, daemon-side). GitHub Issues #21 and #22 solved structurally by daemon design. Five bug issues (#13, #14, #15, #16, #20) assigned to collaborator LachrymaGhost.
 
-Sprints 12–14 implemented the daemon core, transport, and client connection manager. A 6-digit pairing flow (like Bluetooth pairing) was added on top to replace manual connection-string copy-paste. Sprint 15 removed the local node-pty fallback and added localhost daemon auto-start, completing the "all sessions are daemon-managed" observable. Live-tested 2026-04-21 end-to-end: zero-config localhost auto-start and remote pairing both verified.
+Sprints 12–14 implemented the daemon core, transport, and client connection manager. A 6-digit pairing flow (like Bluetooth pairing) was added on top to replace manual connection-string copy-paste. Sprint 15 removed the local node-pty fallback and added localhost daemon auto-start, completing the "all sessions are daemon-managed" observable. Issue #26 (2026-04-22) made remote pairings persist across client restarts, closing the last usability gap from the milestone. Live-verified end-to-end on laptop ↔ VM: zero-config localhost auto-start, remote pairing, restart-without-repair all confirmed.
 
-Known follow-up: Issue #26 — daemon pairings are held in memory only; they don't round-trip through `preferences.json`, so remote pairings are lost on client restart. Should land before Flow II sprints begin.
+Ready to triage Flow II (v4) sprint plan. ROADMAP.md milestone 4 lists observables: queued prompts, system tray with unread badge, session templates, session groups, notification routing.
