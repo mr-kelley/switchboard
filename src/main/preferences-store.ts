@@ -25,6 +25,7 @@ export function getDefaultPreferences(): SwitchboardPreferences {
     cursorBlink: true,
     scrollbackLines: 5000,
     customCssPath: null,
+    daemonConnections: [],
   };
 }
 

@@ -77,6 +77,16 @@ export interface UIThemeColors {
   errorText: string;
 }
 
+export interface DaemonConnectionConfig {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  token: string;
+  fingerprint: string;
+  autoConnect: boolean;
+}
+
 export interface SwitchboardPreferences {
   terminalFontFamily: string;
   terminalFontSize: number;
@@ -94,6 +104,7 @@ export interface SwitchboardPreferences {
   cursorBlink: boolean;
   scrollbackLines: number;
   customCssPath: string | null;
+  daemonConnections: DaemonConnectionConfig[];
 }
 
 /** API exposed by the preload script via contextBridge. */

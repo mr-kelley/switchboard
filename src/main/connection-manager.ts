@@ -9,18 +9,13 @@ import {
   type SessionInfo,
 } from '../shared/protocol';
 import { notifyIfNeeded, isAppFocused } from './notifications';
+import type { DaemonConnectionConfig } from '../shared/types';
+import { LOCALHOST_DAEMON_ID } from './local-daemon';
+import type { PreferencesStore } from './preferences-store';
+
+export type { DaemonConnectionConfig } from '../shared/types';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting';
-
-export interface DaemonConnectionConfig {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  token: string;
-  fingerprint: string;
-  autoConnect: boolean;
-}
 
 interface ManagedConnection {
   config: DaemonConnectionConfig;
@@ -43,6 +38,25 @@ function broadcast(channel: string, data: unknown): void {
 
 export class ConnectionManager {
   private connections = new Map<string, ManagedConnection>();
+  private prefsStore: PreferencesStore | undefined;
+
+  constructor(prefsStore?: PreferencesStore) {
+    this.prefsStore = prefsStore;
+  }
+
+  /**
+   * Persist all non-localhost daemon configs to preferences so they survive
+   * client restarts. Localhost is re-added by local-daemon auto-start each
+   * launch with a fresh token, so it doesn't belong in prefs.
+   */
+  private persistConnections(): void {
+    if (!this.prefsStore) return;
+    const prefs = this.prefsStore.load();
+    const configs = Array.from(this.connections.values())
+      .map((c) => c.config)
+      .filter((c) => c.id !== LOCALHOST_DAEMON_ID);
+    this.prefsStore.save({ ...prefs, daemonConnections: configs });
+  }
 
   /**
    * Add a daemon connection configuration. Does not connect immediately.
@@ -131,6 +145,7 @@ export class ConnectionManager {
   removeConnection(daemonId: string): void {
     this.disconnect(daemonId);
     this.connections.delete(daemonId);
+    this.persistConnections();
   }
 
   /**
@@ -369,6 +384,7 @@ export class ConnectionManager {
     };
 
     this.connections.set(config.id, conn);
+    this.persistConnections();
 
     // Re-wire the WS message handler to use the managed connection's handler
     ws.removeAllListeners('message');
