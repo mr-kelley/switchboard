@@ -6,7 +6,8 @@ import { PreferencesStore } from './preferences-store';
 import { LocalDaemon } from './local-daemon';
 
 let mainWindow: BrowserWindow | null = null;
-const connectionManager = new ConnectionManager();
+const prefsStore = new PreferencesStore();
+const connectionManager = new ConnectionManager(prefsStore);
 const localDaemon = new LocalDaemon();
 
 const isDev = !app.isPackaged;
@@ -37,22 +38,18 @@ export function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
-  const prefsStore = new PreferencesStore();
   const prefs = prefsStore.load();
-  const daemonConnections = (prefs as any).daemonConnections || [];
-  for (const conn of daemonConnections) {
+  for (const conn of prefs.daemonConnections) {
     if (conn && conn.id && conn.host && conn.port && conn.token) {
       connectionManager.addConnection(conn);
     }
   }
 
-  if (daemonConnections.length === 0) {
-    try {
-      const localConfig = await localDaemon.start();
-      connectionManager.addConnection(localConfig);
-    } catch (err) {
-      console.error('Failed to auto-start localhost daemon:', err);
-    }
+  try {
+    const localConfig = await localDaemon.start();
+    connectionManager.addConnection(localConfig);
+  } catch (err) {
+    console.error('Failed to auto-start localhost daemon:', err);
   }
 
   registerIpcHandlers(connectionManager);

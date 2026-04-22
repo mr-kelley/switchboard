@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { app } from 'electron';
-import type { DaemonConnectionConfig } from './connection-manager';
+import type { DaemonConnectionConfig } from '../shared/types';
 
 export const LOCALHOST_DAEMON_ID = 'localhost';
 
