@@ -119,6 +119,11 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
       window.switchboard.pty.input(sessionId, data);
     });
 
+    // Request replay buffer for any history the daemon already has for this
+    // session — covers both client-restart (fresh client, daemon-side session)
+    // and daemon-restart (sessions restored from disk with persisted buffers).
+    window.switchboard.session.requestReplay(sessionId).catch(() => {});
+
     // Handle window resize — only fit if visible, otherwise defer
     const handleResize = () => {
       if (!visibleRef.current) {

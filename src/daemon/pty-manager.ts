@@ -7,6 +7,7 @@ interface SessionConfig {
   name: string;
   cwd: string;
   command?: string;
+  id?: string;
 }
 
 interface ManagedSession {
@@ -33,7 +34,7 @@ export class PtyManager {
   }
 
   spawn(config: SessionConfig): SessionInfo {
-    const id = randomUUID();
+    const id = config.id ?? randomUUID();
     const shell = config.command || this.getDefaultShell();
 
     const ptyProcess = pty.spawn(shell, [], {
@@ -115,6 +116,10 @@ export class PtyManager {
   getSession(sessionId: string): SessionInfo | undefined {
     const session = this.sessions.get(sessionId);
     return session ? { ...session.info } : undefined;
+  }
+
+  has(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
   }
 
   updateStatus(sessionId: string, status: SessionStatus): void {

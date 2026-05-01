@@ -117,6 +117,8 @@ export class Daemon {
   async start(): Promise<void> {
     await this.transport.start();
 
+    this.restoreSessions();
+
     // Periodic buffer persistence (every 60 seconds)
     this.persistTimer = setInterval(() => {
       for (const buf of this.buffers.values()) {
@@ -128,6 +130,33 @@ export class Daemon {
     console.log(`Switchboard daemon listening on ${this.config.host}:${this.config.port}`);
     console.log(`Connection string: switchboard://${this.config.host}:${this.config.port}?token=${this.config.auth.token}&fingerprint=${fingerprint}`);
     console.log(`Daemon ready.`);
+  }
+
+  private restoreSessions(): void {
+    const saved = this.sessionStore.load();
+    if (saved.length === 0) return;
+    let restored = 0;
+    for (const s of saved) {
+      try {
+        const session = this.ptyManager.spawn({
+          id: s.id,
+          name: s.name,
+          cwd: s.cwd,
+          command: s.command,
+        });
+        this.idleDetector.addSession(session.id);
+        const bufPath = `${this.config.sessionPersistPath.replace('sessions.json', '')}buffers/${session.id}.buf`;
+        const buf = new OutputBuffer(this.config.scrollbackLimit, bufPath);
+        this.buffers.set(session.id, buf);
+        restored++;
+      } catch (err) {
+        console.warn(`Failed to restore session ${s.name} (${s.id}): ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    if (restored > 0) {
+      console.log(`Restored ${restored} session${restored === 1 ? '' : 's'} from disk.`);
+      this.persistSessions();
+    }
   }
 
   async stop(): Promise<void> {
@@ -210,6 +239,9 @@ export class Daemon {
         break;
       case 'session:clear-queue':
         this.handleClearQueue(msg.sessionId);
+        break;
+      case 'session:replay-request':
+        this.handleReplayRequest(conn, msg.sessionId);
         break;
       default:
         this.transport.send(conn.id, {
@@ -309,6 +341,37 @@ export class Daemon {
     });
   }
 
+  private handleReplayRequest(conn: ClientConnection, sessionId: string): void {
+    if (!this.ptyManager.has(sessionId)) {
+      this.transport.send(conn.id, {
+        type: 'error',
+        code: 'UNKNOWN_SESSION',
+        message: `Replay requested for unknown session: ${sessionId}`,
+      });
+      return;
+    }
+    const buf = this.buffers.get(sessionId);
+    const totalBytes = buf?.getTotalBytes() ?? 0;
+    this.transport.send(conn.id, {
+      type: 'replay:begin',
+      sessionId,
+      totalBytes,
+    });
+    if (buf && buf.getLineCount() > 0) {
+      for (const chunk of buf.replayChunks()) {
+        this.transport.send(conn.id, {
+          type: 'replay:data',
+          sessionId,
+          data: chunk,
+        });
+      }
+    }
+    this.transport.send(conn.id, {
+      type: 'replay:end',
+      sessionId,
+    });
+  }
+
   private handleClearQueue(sessionId: string): void {
     if (!this.queuedPrompts.get(sessionId)) return;
     this.queuedPrompts.clear(sessionId);
@@ -336,7 +399,7 @@ export class Daemon {
   private persistSessions(): void {
     const sessions = this.ptyManager.getAll();
     this.sessionStore.save(
-      sessions.map((s) => ({ name: s.name, cwd: s.cwd, command: s.command }))
+      sessions.map((s) => ({ id: s.id, name: s.name, cwd: s.cwd, command: s.command }))
     );
   }
 }
