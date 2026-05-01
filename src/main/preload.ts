@@ -66,6 +66,9 @@ const api = {
     clearQueue(sessionId: string) {
       return ipcRenderer.invoke('session:clear-queue', { sessionId });
     },
+    requestReplay(sessionId: string) {
+      return ipcRenderer.invoke('session:replay-request', { sessionId });
+    },
     onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void {
       const handler = (_event: Electron.IpcRendererEvent, args: { sessionId: string; text: string | null }) => {
         callback(args.sessionId, args.text);
