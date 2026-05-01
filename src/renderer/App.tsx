@@ -79,11 +79,23 @@ function AppContent(): React.ReactElement {
     return unsubStatus;
   }, [updateSessionStatus]);
 
-  // Listen for daemon-created sessions (async spawn via daemon)
+  // Listen for daemon-created sessions (async spawn via daemon).
+  // Also hydrate from main's current session list to recover from any
+  // session-created broadcasts that fired before this listener attached.
   useEffect(() => {
+    const knownIds = new Set<string>();
     const unsub = window.switchboard.session.onSessionCreated((session: import('../shared/types').SessionInfo) => {
+      if (knownIds.has(session.id)) return;
+      knownIds.add(session.id);
       addSession(session);
     });
+    window.switchboard.session.list().then((sessions: import('../shared/types').SessionInfo[]) => {
+      for (const session of sessions) {
+        if (knownIds.has(session.id)) continue;
+        knownIds.add(session.id);
+        addSession(session);
+      }
+    }).catch(() => {});
     return unsub;
   }, [addSession]);
 

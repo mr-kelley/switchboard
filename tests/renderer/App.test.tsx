@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock xterm.js
@@ -8,6 +8,7 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(),
     onData: vi.fn().mockReturnValue({ dispose: vi.fn() }),
     dispose: vi.fn(), focus: vi.fn(), cols: 80, rows: 24,
+    options: {},
   })),
 }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: vi.fn().mockImplementation(() => ({ fit: vi.fn(), dispose: vi.fn() })) }));
@@ -92,5 +93,31 @@ describe('App', () => {
   it('renders a New Session button', () => {
     render(<App />);
     expect(screen.getByTestId('new-session-button')).toBeInTheDocument();
+  });
+
+  it('hydrates existing daemon sessions via session.list on mount', async () => {
+    (window as any).switchboard.session.list = vi.fn().mockResolvedValue([
+      { id: 'vm:abc', name: 'tick-loop', status: 'working', cwd: '/home/x', command: 'bash' },
+    ]);
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('session-tab-vm:abc')).toBeInTheDocument();
+    });
+  });
+
+  it('deduplicates sessions across list-hydration and create-broadcast', async () => {
+    const session = { id: 'vm:abc', name: 'shared', status: 'working', cwd: '/home/x', command: 'bash' };
+    let createdHandler: ((s: any) => void) | null = null;
+    (window as any).switchboard.session.list = vi.fn().mockResolvedValue([session]);
+    (window as any).switchboard.session.onSessionCreated = vi.fn().mockImplementation((cb: any) => {
+      createdHandler = cb;
+      return () => {};
+    });
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('session-tab-vm:abc')).toBeInTheDocument();
+    });
+    createdHandler?.(session);
+    expect(screen.getAllByTestId('session-tab-vm:abc')).toHaveLength(1);
   });
 });
