@@ -1,6 +1,8 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
+import type { LocalDaemon } from './local-daemon';
+import * as systemd from './systemd-installer';
 import type { SwitchboardPreferences } from '../shared/types';
 
 function broadcast(channel: string, data: unknown): void {
@@ -10,7 +12,10 @@ function broadcast(channel: string, data: unknown): void {
   }
 }
 
-export function registerIpcHandlers(connectionManager: ConnectionManager): void {
+export function registerIpcHandlers(
+  connectionManager: ConnectionManager,
+  localDaemon?: LocalDaemon,
+): void {
   const preferencesStore = new PreferencesStore();
 
   // --- Session commands (all route to daemon) ---
@@ -133,6 +138,49 @@ export function registerIpcHandlers(connectionManager: ConnectionManager): void 
     const defaults = preferencesStore.reset();
     broadcast('preferences:changed', defaults);
     return defaults;
+  });
+
+  // --- Localhost daemon service (systemd --user) ---
+
+  ipcMain.handle('localService:status', async () => {
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:install', async () => {
+    if (!localDaemon) throw new Error('Local daemon not available');
+    if (!systemd.isSupported()) {
+      throw new Error('Service install is only supported on Linux');
+    }
+    const daemonScript = localDaemon.getDaemonScriptPath();
+    await systemd.install({
+      daemonScript,
+      execBinary: process.execPath,
+      electronAsNode: true,
+    });
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:uninstall', async () => {
+    if (!systemd.isSupported()) {
+      throw new Error('Service install is only supported on Linux');
+    }
+    await systemd.uninstall();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:start', async () => {
+    await systemd.start();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:stop', async () => {
+    await systemd.stop();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:restart', async () => {
+    await systemd.restart();
+    return systemd.getStatus();
   });
 
   // --- Dialog ---

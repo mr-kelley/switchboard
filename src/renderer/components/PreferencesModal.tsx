@@ -26,6 +26,128 @@ interface DaemonStatus {
   sessionCount: number;
 }
 
+interface LocalServiceStatus {
+  installed: boolean;
+  running: boolean;
+  pid?: number;
+}
+
+function LocalServiceSection({ uiColors, labelStyle }: {
+  uiColors: Record<string, string>;
+  labelStyle: React.CSSProperties;
+}): React.ReactElement | null {
+  const isLinux = window.switchboard.platform === 'linux';
+  const [status, setStatus] = useState<LocalServiceStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await window.switchboard.daemon.localService.status();
+      setStatus(s);
+    } catch {
+      setStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLinux) return;
+    refresh();
+  }, [refresh, isLinux]);
+
+  if (!isLinux) return null;
+
+  const run = async (op: () => Promise<LocalServiceStatus>, confirmMsg?: string) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const s = await op();
+      setStatus(s);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const btn: React.CSSProperties = {
+    padding: '2px 10px', fontSize: 11, backgroundColor: 'transparent',
+    border: `1px solid ${uiColors.inputBorder}`, borderRadius: 3,
+    color: uiColors.appText, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1,
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <label style={labelStyle}>Localhost service</label>
+      <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 8 }}>
+        Install the localhost daemon as a systemd user service so sessions survive client restarts.
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 8px', backgroundColor: uiColors.inputBg, borderRadius: 4,
+      }}>
+        {status === null ? (
+          <span style={{ fontSize: 12, color: uiColors.appTextMuted }}>Checking…</span>
+        ) : !status.installed ? (
+          <>
+            <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>Not installed</span>
+            <button
+              data-testid="local-service-install"
+              onClick={() => run(() => window.switchboard.daemon.localService.install(),
+                'Install Switchboard daemon as a systemd user service?\n\nThe daemon will auto-start on login and survive client restarts.')}
+              disabled={busy}
+              style={btn}
+            >Install</button>
+          </>
+        ) : status.running ? (
+          <>
+            <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>
+              Running{status.pid ? ` (PID ${status.pid})` : ''}
+            </span>
+            <button
+              data-testid="local-service-restart"
+              onClick={() => run(() => window.switchboard.daemon.localService.restart())}
+              disabled={busy} style={btn}
+            >Restart</button>
+            <button
+              data-testid="local-service-stop"
+              onClick={() => run(() => window.switchboard.daemon.localService.stop())}
+              disabled={busy} style={btn}
+            >Stop</button>
+            <button
+              data-testid="local-service-uninstall"
+              onClick={() => run(() => window.switchboard.daemon.localService.uninstall(),
+                'Uninstall the systemd user service?\n\nThe daemon will no longer auto-start; the client will spawn it as a child process instead.')}
+              disabled={busy}
+              style={{ ...btn, color: uiColors.errorText, borderColor: uiColors.errorText }}
+            >Uninstall</button>
+          </>
+        ) : (
+          <>
+            <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>Installed, stopped</span>
+            <button
+              data-testid="local-service-start"
+              onClick={() => run(() => window.switchboard.daemon.localService.start())}
+              disabled={busy} style={btn}
+            >Start</button>
+            <button
+              data-testid="local-service-uninstall"
+              onClick={() => run(() => window.switchboard.daemon.localService.uninstall(),
+                'Uninstall the systemd user service?')}
+              disabled={busy}
+              style={{ ...btn, color: uiColors.errorText, borderColor: uiColors.errorText }}
+            >Uninstall</button>
+          </>
+        )}
+      </div>
+      {error && (
+        <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 6 }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
 function DaemonSection({ uiColors, inputStyle, labelStyle }: {
   uiColors: Record<string, string>;
   inputStyle: React.CSSProperties;
@@ -132,6 +254,8 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
       <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 12 }}>
         Connect to Switchboard daemons running on this machine or remote hosts.
       </div>
+
+      <LocalServiceSection uiColors={uiColors} labelStyle={labelStyle} />
 
       {statuses.length > 0 && (
         <div style={{ marginBottom: 16 }}>

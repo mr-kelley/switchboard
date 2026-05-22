@@ -148,6 +148,26 @@ const api = {
       ipcRenderer.on('daemon:pair-failed', handler);
       return () => ipcRenderer.removeListener('daemon:pair-failed', handler);
     },
+    localService: {
+      status() {
+        return ipcRenderer.invoke('localService:status');
+      },
+      install() {
+        return ipcRenderer.invoke('localService:install');
+      },
+      uninstall() {
+        return ipcRenderer.invoke('localService:uninstall');
+      },
+      start() {
+        return ipcRenderer.invoke('localService:start');
+      },
+      stop() {
+        return ipcRenderer.invoke('localService:stop');
+      },
+      restart() {
+        return ipcRenderer.invoke('localService:restart');
+      },
+    },
   },
   preferences: {
     load() {
