@@ -66,7 +66,7 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - DEC-000001: Retire v3 Intelligence; introduce v3 Daemon, v4 Flow II, v5 Intelligence. Daemon-first architecture to support remote sessions and session mobility.
 
 ## Open Questions
-*(none)*
+- Issue #38: `OutputBuffer` line-based storage corrupts PTY byte streams — replay-on-demand is broken for TUI output (watch/vim/less/claude). Three compounding bugs: split/join injects spurious newlines at chunk boundaries, line-eviction strips initial state-setting escape codes, and replay races with live `session:data`. Fix is a byte-based buffer + renderer-side replay queue — sized as its own sprint. Queued post-Sprint 18.
 
 ## Session Notes
 Daemon (v3) complete and live-verified. Flow II (v4) underway. Sprint 16 (Queued Prompts) shipped daemon-side with broadcast-to-all + reject-only-to-requester semantics. Sprint 17 (Persistent Daemon — Part 1 of Issue #32) shipped: boot-time restore reconstructs sessions from `sessions.json` with stable ids so per-session buffer paths remain valid across restart; `session:replay-request` is a new client→daemon message the renderer fires on mount, closing the rc.6 replay-history gap for pre-existing sessions. Note: PTYs themselves don't survive daemon restart — only metadata + scrollback do; respawned sessions get a fresh shell.
