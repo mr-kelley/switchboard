@@ -30,6 +30,8 @@ interface LocalServiceStatus {
   installed: boolean;
   running: boolean;
   pid?: number;
+  installBlocked?: boolean;
+  installBlockedReason?: string;
 }
 
 function LocalServiceSection({ uiColors, labelStyle }: {
@@ -91,14 +93,18 @@ function LocalServiceSection({ uiColors, labelStyle }: {
           <span style={{ fontSize: 12, color: uiColors.appTextMuted }}>Checking…</span>
         ) : !status.installed ? (
           <>
-            <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>Not installed</span>
-            <button
-              data-testid="local-service-install"
-              onClick={() => run(() => window.switchboard.daemon.localService.install(),
-                'Install Switchboard daemon as a systemd user service?\n\nThe daemon will auto-start on login and survive client restarts.')}
-              disabled={busy}
-              style={btn}
-            >Install</button>
+            <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>
+              {status.installBlocked ? 'Install unavailable' : 'Not installed'}
+            </span>
+            {!status.installBlocked && (
+              <button
+                data-testid="local-service-install"
+                onClick={() => run(() => window.switchboard.daemon.localService.install(),
+                  'Install Switchboard daemon as a systemd user service?\n\nThe daemon will auto-start on login and survive client restarts.')}
+                disabled={busy}
+                style={btn}
+              >Install</button>
+            )}
           </>
         ) : status.running ? (
           <>
@@ -143,6 +149,11 @@ function LocalServiceSection({ uiColors, labelStyle }: {
       </div>
       {error && (
         <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 6 }}>{error}</div>
+      )}
+      {status?.installBlocked && status.installBlockedReason && (
+        <div style={{ color: uiColors.appTextMuted, fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>
+          {status.installBlockedReason}
+        </div>
       )}
     </div>
   );

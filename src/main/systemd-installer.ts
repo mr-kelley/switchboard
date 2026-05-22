@@ -27,6 +27,10 @@ export interface ServiceStatus {
   installed: boolean;
   running: boolean;
   pid?: number;
+  /** True when the host environment cannot support install (e.g., AppImage). */
+  installBlocked?: boolean;
+  /** Human-readable explanation of why install is blocked. */
+  installBlockedReason?: string;
 }
 
 export interface InstallParams {

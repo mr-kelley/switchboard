@@ -143,13 +143,30 @@ export function registerIpcHandlers(
   // --- Localhost daemon service (systemd --user) ---
 
   ipcMain.handle('localService:status', async () => {
-    return systemd.getStatus();
+    const status = await systemd.getStatus();
+    if (process.env.APPIMAGE) {
+      return {
+        ...status,
+        installBlocked: true,
+        installBlockedReason:
+          'Service install is not supported when running from an AppImage. ' +
+          'Install Switchboard from .deb or .snap, or run from source.',
+      };
+    }
+    return status;
   });
 
   ipcMain.handle('localService:install', async () => {
     if (!localDaemon) throw new Error('Local daemon not available');
     if (!systemd.isSupported()) {
       throw new Error('Service install is only supported on Linux');
+    }
+    if (process.env.APPIMAGE) {
+      throw new Error(
+        'Service install is not supported when running from an AppImage. ' +
+        'Install Switchboard from .deb, .snap, or run from source. ' +
+        '(AppImages live at ephemeral mount paths that systemd cannot resolve after the GUI exits.)'
+      );
     }
     // Free port 3717 before systemctl enable --now spawns the service-managed daemon.
     await localDaemon.stopChildAndWait();
