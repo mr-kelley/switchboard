@@ -81,6 +81,13 @@ export function registerIpcHandlers(connectionManager: ConnectionManager): void 
     connectionManager.clearQueue(args.sessionId);
   });
 
+  ipcMain.handle('session:replay-request', (_event, args: { sessionId: string }) => {
+    if (!args || typeof args.sessionId !== 'string') {
+      throw new Error('session:replay-request requires sessionId');
+    }
+    connectionManager.requestReplay(args.sessionId);
+  });
+
   // --- Daemon connection management ---
 
   ipcMain.handle('daemon:add', (_event, config: DaemonConnectionConfig) => {

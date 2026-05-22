@@ -90,6 +90,11 @@ export interface SessionClearQueueMessage extends BaseMessage {
   sessionId: string;
 }
 
+export interface SessionReplayRequestMessage extends BaseMessage {
+  type: 'session:replay-request';
+  sessionId: string;
+}
+
 export type ClientMessage =
   | AuthMessage
   | SessionSpawnMessage
@@ -102,7 +107,8 @@ export type ClientMessage =
   | PairRequestMessage
   | PairResponseMessage
   | SessionQueuePromptMessage
-  | SessionClearQueueMessage;
+  | SessionClearQueueMessage
+  | SessionReplayRequestMessage;
 
 // --- Daemon → Client ---
 

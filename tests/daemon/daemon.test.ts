@@ -155,6 +155,44 @@ describe('Daemon (integration)', () => {
     ws.close();
   }, 10000);
 
+  it('replays buffer on session:replay-request', async () => {
+    const { ws } = await connectAndAuth();
+
+    const createdPromise = waitForMessage(ws, 'session:created');
+    ws.send(JSON.stringify({ type: 'session:spawn', seq: 2, name: 'replay-test', cwd: os.tmpdir() }));
+    const created = await createdPromise;
+    const sessionId = (created as any).session.id;
+
+    // Get some output into the buffer
+    await waitForMessage(ws, 'session:data');
+
+    // Request replay
+    const replayBegin = waitForMessage(ws, 'replay:begin');
+    ws.send(JSON.stringify({ type: 'session:replay-request', seq: 3, sessionId }));
+    const begin = await replayBegin;
+    expect((begin as any).sessionId).toBe(sessionId);
+    expect(typeof (begin as any).totalBytes).toBe('number');
+
+    // replay:end follows (with possibly replay:data in between)
+    await waitForMessage(ws, 'replay:end');
+
+    // Cleanup
+    ws.send(JSON.stringify({ type: 'session:close', seq: 4, sessionId }));
+    await waitForMessage(ws, 'session:closed');
+    ws.close();
+  }, 10000);
+
+  it('returns error for replay-request on unknown session', async () => {
+    const { ws } = await connectAndAuth();
+
+    const errorPromise = waitForMessage(ws, 'error');
+    ws.send(JSON.stringify({ type: 'session:replay-request', seq: 2, sessionId: 'nonexistent-id' }));
+    const err = await errorPromise;
+    expect((err as any).code).toBe('UNKNOWN_SESSION');
+
+    ws.close();
+  }, 10000);
+
   it('renames a session', async () => {
     const { ws } = await connectAndAuth();
 

@@ -52,6 +52,16 @@ describe('PtyManager', () => {
     expect(manager.getSession('nonexistent')).toBeUndefined();
   });
 
+  it('spawns with a caller-supplied id when provided', () => {
+    const info = manager.spawn({ id: 'fixed-id', name: 'restored', cwd: '/tmp' });
+    expect(info.id).toBe('fixed-id');
+    expect(manager.has('fixed-id')).toBe(true);
+  });
+
+  it('has returns false for unknown ids', () => {
+    expect(manager.has('nope')).toBe(false);
+  });
+
   it('write sends data to the correct PTY', () => {
     const info = manager.spawn({ name: 'test', cwd: '/tmp' });
     manager.write(info.id, 'hello');

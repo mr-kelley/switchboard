@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface SavedSession {
+  id: string;
   name: string;
   cwd: string;
   command: string;
@@ -29,7 +30,11 @@ export class SessionStore {
         return [];
       }
       return data.sessions.filter(
-        (s) => typeof s.name === 'string' && typeof s.cwd === 'string' && typeof s.command === 'string'
+        (s) =>
+          typeof s.id === 'string' &&
+          typeof s.name === 'string' &&
+          typeof s.cwd === 'string' &&
+          typeof s.command === 'string'
       );
     } catch {
       return [];

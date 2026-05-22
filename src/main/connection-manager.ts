@@ -266,6 +266,12 @@ export class ConnectionManager {
     this.sendToDaemon(found.conn, { type: 'session:clear-queue', sessionId: found.sessionId });
   }
 
+  requestReplay(compositeId: string): void {
+    const found = this.findConnection(compositeId);
+    if (!found) return;
+    this.sendToDaemon(found.conn, { type: 'session:replay-request', sessionId: found.sessionId });
+  }
+
   /**
    * Get the first connected daemon ID (convenience for single-daemon setups).
    */

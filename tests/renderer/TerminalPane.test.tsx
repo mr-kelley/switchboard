@@ -54,6 +54,9 @@ beforeEach(() => {
       input: mockInput,
       onData: mockOnData,
     },
+    session: {
+      requestReplay: vi.fn().mockResolvedValue(undefined),
+    },
   };
 });
 
