@@ -151,12 +151,15 @@ export function registerIpcHandlers(
     if (!systemd.isSupported()) {
       throw new Error('Service install is only supported on Linux');
     }
+    // Free port 3717 before systemctl enable --now spawns the service-managed daemon.
+    await localDaemon.stopChildAndWait();
     const daemonScript = localDaemon.getDaemonScriptPath();
     await systemd.install({
       daemonScript,
       execBinary: process.execPath,
       electronAsNode: true,
     });
+    localDaemon.markServiceManaged();
     return systemd.getStatus();
   });
 

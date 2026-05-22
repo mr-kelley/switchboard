@@ -79,9 +79,30 @@ export class LocalDaemon {
     return this.serviceManaged;
   }
 
+  /** Mark the localhost daemon as service-managed (called after a successful install). */
+  markServiceManaged(): void {
+    this.serviceManaged = true;
+  }
+
   /** Absolute path to the daemon entry script for the current build. */
   getDaemonScriptPath(): string {
     return this.resolveDaemonScript();
+  }
+
+  /**
+   * Stop the child daemon if we spawned one and wait for the OS to release the port.
+   * No-op if service-managed or no child exists.
+   */
+  async stopChildAndWait(): Promise<void> {
+    if (!this.process || this.serviceManaged) return;
+    const proc = this.process;
+    this.process = null;
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      proc.once('exit', done);
+      proc.kill('SIGTERM');
+      setTimeout(done, 3000);
+    });
   }
 
   stop(): void {
