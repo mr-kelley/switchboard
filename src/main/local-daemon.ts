@@ -5,14 +5,35 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import { app } from 'electron';
 import type { DaemonConnectionConfig } from '../shared/types';
+import * as systemd from './systemd-installer';
 
 export const LOCALHOST_DAEMON_ID = 'localhost';
 
 export class LocalDaemon {
   private process: ChildProcess | null = null;
   private stderrBuffer = '';
+  private serviceManaged = false;
 
   async start(): Promise<DaemonConnectionConfig> {
+    // If a systemd user service is installed and running, defer to it instead
+    // of spawning a child. The client just connects to the existing daemon.
+    if (systemd.isSupported() && systemd.isInstalled()) {
+      const running = await systemd.isRunning();
+      if (running) {
+        this.serviceManaged = true;
+        const config = this.readDaemonConfig();
+        return {
+          id: LOCALHOST_DAEMON_ID,
+          name: 'Localhost',
+          host: '127.0.0.1',
+          port: config.port,
+          token: config.auth.token,
+          fingerprint: config.fingerprint,
+          autoConnect: true,
+        };
+      }
+    }
+
     const daemonScript = this.resolveDaemonScript();
 
     if (!fs.existsSync(daemonScript)) {
@@ -50,11 +71,46 @@ export class LocalDaemon {
     };
   }
 
+  /**
+   * Whether the localhost daemon is managed by an external systemd service
+   * (i.e., this instance did not spawn the daemon child).
+   */
+  isServiceManaged(): boolean {
+    return this.serviceManaged;
+  }
+
+  /** Mark the localhost daemon as service-managed (called after a successful install). */
+  markServiceManaged(): void {
+    this.serviceManaged = true;
+  }
+
+  /** Absolute path to the daemon entry script for the current build. */
+  getDaemonScriptPath(): string {
+    return this.resolveDaemonScript();
+  }
+
+  /**
+   * Stop the child daemon if we spawned one and wait for the OS to release the port.
+   * No-op if service-managed or no child exists.
+   */
+  async stopChildAndWait(): Promise<void> {
+    if (!this.process || this.serviceManaged) return;
+    const proc = this.process;
+    this.process = null;
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      proc.once('exit', done);
+      proc.kill('SIGTERM');
+      setTimeout(done, 3000);
+    });
+  }
+
   stop(): void {
     if (this.process) {
       this.process.kill('SIGTERM');
       this.process = null;
     }
+    // Service-managed daemons are intentionally left running on app quit.
   }
 
   private resolveDaemonScript(): string {

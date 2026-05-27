@@ -1,6 +1,8 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
+import type { LocalDaemon } from './local-daemon';
+import * as systemd from './systemd-installer';
 import type { SwitchboardPreferences } from '../shared/types';
 
 function broadcast(channel: string, data: unknown): void {
@@ -10,7 +12,10 @@ function broadcast(channel: string, data: unknown): void {
   }
 }
 
-export function registerIpcHandlers(connectionManager: ConnectionManager): void {
+export function registerIpcHandlers(
+  connectionManager: ConnectionManager,
+  localDaemon?: LocalDaemon,
+): void {
   const preferencesStore = new PreferencesStore();
 
   // --- Session commands (all route to daemon) ---
@@ -133,6 +138,69 @@ export function registerIpcHandlers(connectionManager: ConnectionManager): void 
     const defaults = preferencesStore.reset();
     broadcast('preferences:changed', defaults);
     return defaults;
+  });
+
+  // --- Localhost daemon service (systemd --user) ---
+
+  ipcMain.handle('localService:status', async () => {
+    const status = await systemd.getStatus();
+    if (process.env.APPIMAGE) {
+      return {
+        ...status,
+        installBlocked: true,
+        installBlockedReason:
+          'Service install is not supported when running from an AppImage. ' +
+          'Install Switchboard from .deb or .snap, or run from source.',
+      };
+    }
+    return status;
+  });
+
+  ipcMain.handle('localService:install', async () => {
+    if (!localDaemon) throw new Error('Local daemon not available');
+    if (!systemd.isSupported()) {
+      throw new Error('Service install is only supported on Linux');
+    }
+    if (process.env.APPIMAGE) {
+      throw new Error(
+        'Service install is not supported when running from an AppImage. ' +
+        'Install Switchboard from .deb, .snap, or run from source. ' +
+        '(AppImages live at ephemeral mount paths that systemd cannot resolve after the GUI exits.)'
+      );
+    }
+    // Free port 3717 before systemctl enable --now spawns the service-managed daemon.
+    await localDaemon.stopChildAndWait();
+    const daemonScript = localDaemon.getDaemonScriptPath();
+    await systemd.install({
+      daemonScript,
+      execBinary: process.execPath,
+      electronAsNode: true,
+    });
+    localDaemon.markServiceManaged();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:uninstall', async () => {
+    if (!systemd.isSupported()) {
+      throw new Error('Service install is only supported on Linux');
+    }
+    await systemd.uninstall();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:start', async () => {
+    await systemd.start();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:stop', async () => {
+    await systemd.stop();
+    return systemd.getStatus();
+  });
+
+  ipcMain.handle('localService:restart', async () => {
+    await systemd.restart();
+    return systemd.getStatus();
   });
 
   // --- Dialog ---

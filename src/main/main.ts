@@ -52,7 +52,7 @@ app.whenReady().then(async () => {
     console.error('Failed to auto-start localhost daemon:', err);
   }
 
-  registerIpcHandlers(connectionManager);
+  registerIpcHandlers(connectionManager, localDaemon);
   mainWindow = createWindow();
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
