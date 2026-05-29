@@ -146,17 +146,40 @@ export default function Sidebar(): React.ReactElement {
           </DndContext>
         )}
       </div>
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          items={[
-            { label: 'Rename', action: handleRename },
-            { label: 'Close Session', action: handleClose, shortcut: 'Ctrl+W' },
-          ]}
-        />
-      )}
+      {contextMenu && (() => {
+        const current = prefs.notificationPriorities?.[contextMenu.sessionId] ?? 'normal';
+        const sid = contextMenu.sessionId;
+        const priorities: Array<{ value: 'high' | 'normal' | 'silent'; label: string }> = [
+          { value: 'high', label: 'High (always notify)' },
+          { value: 'normal', label: 'Normal (when unfocused)' },
+          { value: 'silent', label: 'Silent (never notify)' },
+        ];
+        return (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            items={[
+              { label: 'Rename', action: handleRename },
+              {
+                label: 'Notifications',
+                submenu: priorities.map((p) => ({
+                  label: p.label,
+                  checked: current === p.value,
+                  action: () => {
+                    try {
+                      window.switchboard.session.setPriority(sid, p.value);
+                    } catch {
+                      // ignore — main rejects invalid input
+                    }
+                  },
+                })),
+              },
+              { label: 'Close Session', action: handleClose, shortcut: 'Ctrl+W' },
+            ]}
+          />
+        );
+      })()}
     </div>
   );
 }

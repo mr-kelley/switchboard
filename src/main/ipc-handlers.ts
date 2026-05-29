@@ -3,7 +3,9 @@ import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
 import type { LocalDaemon } from './local-daemon';
 import * as systemd from './systemd-installer';
-import type { SwitchboardPreferences } from '../shared/types';
+import type { SwitchboardPreferences, NotificationPriority } from '../shared/types';
+
+const NOTIFICATION_PRIORITIES: NotificationPriority[] = ['high', 'normal', 'silent'];
 
 function broadcast(channel: string, data: unknown): void {
   const windows = BrowserWindow.getAllWindows();
@@ -91,6 +93,22 @@ export function registerIpcHandlers(
       throw new Error('session:replay-request requires sessionId');
     }
     connectionManager.requestReplay(args.sessionId);
+  });
+
+  ipcMain.handle('session:set-priority', (_event, args: { sessionId: string; priority: NotificationPriority }) => {
+    if (!args || typeof args.sessionId !== 'string') {
+      throw new Error('session:set-priority requires sessionId');
+    }
+    if (!NOTIFICATION_PRIORITIES.includes(args.priority)) {
+      throw new Error('session:set-priority requires a valid priority');
+    }
+    const prefs = preferencesStore.load();
+    const next: SwitchboardPreferences = {
+      ...prefs,
+      notificationPriorities: { ...prefs.notificationPriorities, [args.sessionId]: args.priority },
+    };
+    preferencesStore.save(next);
+    broadcast('preferences:changed', next);
   });
 
   // --- Daemon connection management ---

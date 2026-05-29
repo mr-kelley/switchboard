@@ -1,6 +1,6 @@
 ---
 title: Sidebar Component Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
 domain_tags: [renderer, react, ui]
 status: active
@@ -20,6 +20,7 @@ Render the session list sidebar with clickable session tabs and a right-click co
 - Right-clicking a tab opens a `ContextMenu` component positioned at the click coordinates.
 - Menu items:
   - **Rename** — prompts the user (browser `prompt()`) for a new name, calls `updateSessionName`.
+  - **Notifications** (submenu, Sprint 19) — High / Normal / Silent. Calls `window.switchboard.session.setPriority(sessionId, priority)`. The current priority (from `prefs.notificationPriorities[sessionId]`, default `normal`) is shown with a check mark.
   - **Close Session** — calls `window.switchboard.pty.close()` then `removeSession()`.
 - The context menu dismisses on outside click.
 

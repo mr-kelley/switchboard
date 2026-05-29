@@ -1,6 +1,6 @@
 ---
 title: IPC Handlers Specification
-version: 0.3.0
+version: 0.3.1
 maintained_by: claude
 domain_tags: [electron, ipc, main-process, preferences]
 status: active
@@ -39,6 +39,7 @@ Register IPC handlers that bridge renderer requests to the SessionManager and Pr
 | `pty:close` | `{ sessionId }` | void | Removes from IdleDetector, persists sessions |
 | `session:list` | — | `SessionInfo[]` | — |
 | `session:rename` | `{ sessionId, name }` | void | Broadcasts `session:renamed`, persists sessions |
+| `session:set-priority` | `{ sessionId, priority }` | void | Validates priority ∈ high/normal/silent; updates `notificationPriorities` in prefs, broadcasts `preferences:changed` (Sprint 19) |
 | `preferences:load` | — | `SwitchboardPreferences` | — |
 | `preferences:save` | `SwitchboardPreferences` | void | Persists to disk, broadcasts `preferences:changed` |
 | `preferences:reset` | — | `SwitchboardPreferences` | Deletes prefs file, broadcasts `preferences:changed` |

@@ -132,6 +132,7 @@ export interface SwitchboardAPI {
     queuePrompt(sessionId: string, text: string): Promise<void>;
     clearQueue(sessionId: string): Promise<void>;
     setPriority(sessionId: string, priority: NotificationPriority): Promise<void>;
+    onFocusAttention(callback: () => void): () => void;
     onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void;
     onQueueRejected(callback: (sessionId: string, reason: string) => void): () => void;
     onQueueSync(callback: (queuedPrompts: Record<string, string>) => void): () => void;

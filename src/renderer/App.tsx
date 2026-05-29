@@ -158,6 +158,15 @@ function AppContent(): React.ReactElement {
     return unsub;
   }, [cycleSession]);
 
+  // When the tray is left-clicked, focus a session needing attention (if any).
+  useEffect(() => {
+    const unsub = window.switchboard.session.onFocusAttention(() => {
+      const attn = state.sessions.find((s) => s.status === 'needs-attention');
+      if (attn) setActiveSession(attn.id);
+    });
+    return unsub;
+  }, [state.sessions, setActiveSession]);
+
   const { uiColors } = prefs;
 
   return (

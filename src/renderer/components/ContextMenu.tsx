@@ -1,10 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePreferences } from '../state/preferences';
 
-interface MenuItem {
+export interface MenuItem {
   label: string;
-  action: () => void;
+  action?: () => void;
   shortcut?: string;
+  submenu?: MenuItem[];
+  checked?: boolean;
 }
 
 interface ContextMenuProps {
@@ -18,6 +20,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
   const ref = useRef<HTMLDivElement>(null);
   const { prefs } = usePreferences();
   const { uiColors } = prefs;
+  const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -28,6 +31,26 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [onClose]);
+
+  const itemStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    padding: '6px 14px',
+    backgroundColor: 'transparent',
+    color: uiColors.contextMenuText,
+    border: 'none',
+    fontSize: 13,
+    textAlign: 'left',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  };
+
+  const run = (item: MenuItem) => {
+    item.action?.();
+    onClose();
+  };
 
   return (
     <div
@@ -47,34 +70,59 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
       }}
     >
       {items.map((item, i) => (
-        <button
+        <div
           key={i}
-          data-testid={`context-menu-item-${i}`}
-          onClick={() => {
-            item.action();
-            onClose();
-          }}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            width: '100%',
-            padding: '6px 14px',
-            backgroundColor: 'transparent',
-            color: uiColors.contextMenuText,
-            border: 'none',
-            fontSize: 13,
-            textAlign: 'left',
-            cursor: 'pointer',
-          }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = uiColors.contextMenuHoverBg; }}
-          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'transparent'; }}
+          style={{ position: 'relative' }}
+          onMouseEnter={() => setOpenSubmenu(item.submenu ? i : null)}
         >
-          <span>{item.label}</span>
-          {item.shortcut && (
-            <span style={{ color: uiColors.appTextFaint, fontSize: 11, marginLeft: 16 }}>{item.shortcut}</span>
+          <button
+            data-testid={`context-menu-item-${i}`}
+            onClick={() => {
+              if (item.submenu) return; // parent toggles via hover only
+              run(item);
+            }}
+            style={itemStyle}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = uiColors.contextMenuHoverBg; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+          >
+            <span>{item.label}</span>
+            {item.submenu ? (
+              <span style={{ color: uiColors.appTextFaint, fontSize: 11, marginLeft: 16 }}>▸</span>
+            ) : item.shortcut ? (
+              <span style={{ color: uiColors.appTextFaint, fontSize: 11, marginLeft: 16 }}>{item.shortcut}</span>
+            ) : null}
+          </button>
+          {item.submenu && openSubmenu === i && (
+            <div
+              data-testid={`context-submenu-${i}`}
+              style={{
+                position: 'absolute',
+                top: -5,
+                left: '100%',
+                backgroundColor: uiColors.contextMenuBg,
+                border: `1px solid ${uiColors.contextMenuBorder}`,
+                borderRadius: 6,
+                padding: '4px 0',
+                minWidth: 140,
+                zIndex: 2001,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+              }}
+            >
+              {item.submenu.map((sub, j) => (
+                <button
+                  key={j}
+                  data-testid={`context-menu-subitem-${i}-${j}`}
+                  onClick={() => run(sub)}
+                  style={itemStyle}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = uiColors.contextMenuHoverBg; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                >
+                  <span>{sub.checked ? `✓ ${sub.label}` : sub.label}</span>
+                </button>
+              ))}
+            </div>
           )}
-        </button>
+        </div>
       ))}
     </div>
   );

@@ -1,6 +1,6 @@
 ---
 title: Preload Script Specification
-version: 0.3.0
+version: 0.3.1
 maintained_by: claude
 domain_tags: [electron, ipc, security, preferences]
 status: active
@@ -29,6 +29,9 @@ interface SwitchboardAPI {
   session: {
     list(): Promise<SessionInfo[]>;
     onStatusChanged(callback: (sessionId: string, status: string) => void): () => void;
+    // ... queue/replay methods (Sprints 16-17) ...
+    setPriority(sessionId: string, priority: NotificationPriority): Promise<void>; // Sprint 19
+    onFocusAttention(callback: () => void): () => void;                            // Sprint 19
   };
   preferences: {
     load(): Promise<SwitchboardPreferences>;
@@ -50,6 +53,8 @@ interface SwitchboardAPI {
 | `pty.onExit` | `pty:exit` | main → renderer | send/on (event) |
 | `session.list` | `session:list` | renderer → main | invoke/handle |
 | `session.onStatusChanged` | `session:status-changed` | main → renderer | send/on (event) |
+| `session.setPriority` | `session:set-priority` | renderer → main | invoke/handle (Sprint 19) |
+| `session.onFocusAttention` | `tray:focus-attention` | main → renderer | send/on (event, Sprint 19) |
 | `preferences.load` | `preferences:load` | renderer → main | invoke/handle |
 | `preferences.save` | `preferences:save` | renderer → main | invoke/handle |
 | `preferences.reset` | `preferences:reset` | renderer → main | invoke/handle |
