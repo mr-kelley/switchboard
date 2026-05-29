@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mockUsePreferences } from '../helpers/mock-preferences';
+import { mockUsePreferences, mockPrefs } from '../helpers/mock-preferences';
 
 vi.mock('../../src/renderer/state/preferences', () => ({
   usePreferences: () => mockUsePreferences,
@@ -21,6 +21,11 @@ beforeEach(() => {
       statuses: vi.fn().mockResolvedValue([]),
     },
   };
+  (mockPrefs as any).sessionTemplates = [];
+  mockUsePreferences.updatePrefs.mockClear();
+  if (!('randomUUID' in (globalThis.crypto ?? {}))) {
+    (globalThis as any).crypto = { ...(globalThis.crypto ?? {}), randomUUID: () => 'uuid-test' };
+  }
 });
 
 describe('NewSessionModal', () => {
@@ -60,5 +65,35 @@ describe('NewSessionModal', () => {
   it('has default command value of claude', () => {
     render(<NewSessionModal isOpen={true} onClose={vi.fn()} onSessionCreated={vi.fn()} />);
     expect(screen.getByTestId('input-command')).toHaveValue('claude');
+  });
+
+  it('renders template controls', () => {
+    render(<NewSessionModal isOpen={true} onClose={vi.fn()} onSessionCreated={vi.fn()} />);
+    expect(screen.getByTestId('template-select')).toBeInTheDocument();
+    expect(screen.getByTestId('manage-templates')).toBeInTheDocument();
+    expect(screen.getByTestId('save-as-template')).toBeInTheDocument();
+  });
+
+  it('prefills the form from a selected template', () => {
+    (mockPrefs as any).sessionTemplates = [
+      { id: 't1', name: 'Dev', daemonId: '', cwd: '/home/dev', command: 'vim' },
+    ];
+    render(<NewSessionModal isOpen={true} onClose={vi.fn()} onSessionCreated={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('template-select'), { target: { value: 't1' } });
+    expect(screen.getByTestId('input-name')).toHaveValue('Dev');
+    expect(screen.getByTestId('input-cwd')).toHaveValue('/home/dev');
+    expect(screen.getByTestId('input-command')).toHaveValue('vim');
+  });
+
+  it('persists a new template when "save as template" is checked on submit', async () => {
+    render(<NewSessionModal isOpen={true} onClose={vi.fn()} onSessionCreated={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('input-name'), { target: { value: 'myproj' } });
+    fireEvent.change(screen.getByTestId('input-cwd'), { target: { value: '/work' } });
+    fireEvent.click(screen.getByTestId('save-as-template'));
+    fireEvent.click(screen.getByTestId('submit-session'));
+    await waitFor(() => expect(mockUsePreferences.updatePrefs).toHaveBeenCalled());
+    const arg = mockUsePreferences.updatePrefs.mock.calls.at(-1)![0];
+    expect(arg.sessionTemplates).toHaveLength(1);
+    expect(arg.sessionTemplates[0]).toMatchObject({ name: 'myproj', cwd: '/work' });
   });
 });

@@ -128,5 +128,7 @@ describe('PreferencesStore', () => {
     expect(defaults.cursorBlink).toBe(true);
     expect(defaults.scrollbackLines).toBe(5000);
     expect(defaults.notificationPriorities).toEqual({});
+    expect(defaults.sessionTemplates).toEqual([]);
+    expect(defaults.sessionGroups).toEqual({});
   });
 });
