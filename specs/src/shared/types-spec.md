@@ -1,6 +1,6 @@
 ---
 title: Shared Types Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
 domain_tags: [shared, types, preferences, theming]
 status: active
@@ -29,6 +29,20 @@ These types remain as-is:
 - `SessionStatus` — `'working' | 'idle' | 'needs-attention'`
 - `SessionInfo` — `{ id, name, cwd, command, pid, status }`
 - `SessionConfig` — `{ name, cwd, command? }`
+
+## NotificationPriority (Sprint 19)
+
+Per-session OS-notification priority:
+
+```typescript
+export type NotificationPriority = 'high' | 'normal' | 'silent';
+```
+
+- `high` — always fire the OS notification, even when focused.
+- `normal` — fire only when no app window is focused (default).
+- `silent` — never fire the OS notification (tab status + tray count still update).
+
+Stored per composite session ID (`<daemonId>:<sessionId>`) in `SwitchboardPreferences.notificationPriorities`. Set from the renderer via `window.switchboard.session.setPriority(sessionId, priority)`.
 
 # New Types
 
@@ -163,6 +177,9 @@ export interface SwitchboardPreferences {
   // Terminal behavior
   cursorBlink: boolean;
   scrollbackLines: number;
+
+  // Per-session OS-notification priority, keyed by composite session ID (Sprint 19)
+  notificationPriorities: Record<string, NotificationPriority>;
 }
 ```
 

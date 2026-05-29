@@ -26,6 +26,7 @@ export function getDefaultPreferences(): SwitchboardPreferences {
     scrollbackLines: 5000,
     customCssPath: null,
     daemonConnections: [],
+    notificationPriorities: {},
   };
 }
 
@@ -43,10 +44,16 @@ function deepMerge(defaults: Record<string, unknown>, saved: Record<string, unkn
       !Array.isArray(defaultVal) &&
       !Array.isArray(savedVal)
     ) {
-      result[key] = deepMerge(
-        defaultVal as Record<string, unknown>,
-        savedVal as Record<string, unknown>
-      );
+      // An empty-object default denotes an open map with dynamic keys
+      // (e.g. shortcuts, notificationPriorities). Adopt the saved value
+      // wholesale; per-key merge would strip every saved key as "unknown".
+      result[key] =
+        Object.keys(defaultVal as Record<string, unknown>).length === 0
+          ? savedVal
+          : deepMerge(
+              defaultVal as Record<string, unknown>,
+              savedVal as Record<string, unknown>
+            );
     } else {
       result[key] = savedVal;
     }

@@ -1,6 +1,6 @@
 ---
 title: Preferences Store Specification
-version: 0.1.0
+version: 0.2.0
 maintained_by: claude
 domain_tags: [electron, main-process, persistence, preferences]
 status: active
@@ -55,10 +55,11 @@ The file stores a flat `SwitchboardPreferences` object (no wrapping envelope).
 ## Deep-Merge on Load
 When loading, the stored JSON is deep-merged with `getDefaults()`:
 - Top-level primitive fields: stored value wins if present, default otherwise.
-- Nested objects (`terminalColors`, `uiColors`, `shortcuts`): per-key merge — stored keys win, missing keys filled from defaults.
+- **Fixed-shape nested objects** with a non-empty default (`terminalColors`, `uiColors`): per-key merge — stored keys win, missing keys filled from defaults, unknown keys stripped.
+- **Open maps** — nested objects whose default is an empty object `{}` (`shortcuts`, `notificationPriorities`): the stored value is adopted wholesale. Per-key merge MUST NOT be applied here, because every saved key would be treated as "unknown" against the empty default and stripped, which would prevent these maps from persisting.
 - Arrays (`sessionOrder`): stored value replaces default entirely (no merge).
 
-This ensures that adding new preference fields in future versions does not require migration — the defaults fill in automatically.
+This ensures that adding new preference fields in future versions does not require migration — the defaults fill in automatically — while dynamic-key maps persist their entries across restarts.
 
 ## Default Values
 Defaults are derived from the current hard-coded Catppuccin Mocha theme:
@@ -79,6 +80,7 @@ Defaults are derived from the current hard-coded Catppuccin Mocha theme:
 - `sessionOrder`: `[]` (empty — natural order)
 - `cursorBlink`: `true`
 - `scrollbackLines`: `5000`
+- `notificationPriorities`: `{}` (empty — sessions default to `normal`)
 
 ## Exports
 - `PreferencesStore` class
@@ -97,6 +99,7 @@ Defaults are derived from the current hard-coded Catppuccin Mocha theme:
 - Unit test: `save()` then `load()` round-trip preserves all fields.
 - Unit test: corrupt JSON returns defaults (with console.warn).
 - Unit test: partial JSON deep-merges with defaults (missing top-level field filled, missing nested key filled).
+- Unit test: open maps (`shortcuts`, `notificationPriorities`) persist their dynamic keys across a save/load round-trip (regression guard against the empty-default strip bug).
 - Unit test: `reset()` deletes file and returns defaults.
 - Unit test: `getDefaults()` returns a complete `SwitchboardPreferences` with all required fields.
 - Test file: `tests/main/preferences-store.test.ts`
