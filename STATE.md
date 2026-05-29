@@ -1,13 +1,14 @@
 # Project State — Switchboard
 
 ## Project Overview
-Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals. PTYs run on a standalone daemon process; the Electron client is a daemon client. Repository: `gits/switchboard`. Current phase: **Daemon (v3) complete — between milestones**.
+Switchboard is a Slack-style multi-session terminal manager built for developers who run AI coding agents in parallel. Electron desktop app with React UI, xterm.js terminals. PTYs run on a standalone daemon process; the Electron client is a daemon client. Repository: `gits/switchboard`. Current phase: **Flow II (v4) — in progress**.
 
 ## Active Work
-- **Milestone:** Flow II (v4) — Sprint 17 complete (Part 1 of Issue #32). Sprint 18 next: user-level systemd service installer (Part 2 of Issue #32).
-- **Next up:** Sprint 18 (systemd user service), then Sprint 19 (Tray & Notifications), Sprint 20 (Templates & Groups).
+- **Milestone:** Flow II (v4) — Sprint 18 complete (systemd `--user` service installer, Part 2 of Issue #32). Both parts of #32 now shipped (Sprint 17 = boot-time restore, Sprint 18 = service installer). No sprint actively in progress.
+- **Next up:** Sprint 19 (Tray & Notifications) + Sprint 20 (Templates & Groups) — to be bundled into one PR (neither touches the daemon).
 
 ## Recent Completions
+- Sprint 18: systemd user-service installer — install the localhost daemon as a `systemd --user` service from Preferences → Daemons so it survives client close; client detects an installed+running service and skips the child spawn. `systemd-installer.ts` wraps `systemctl --user` with strict `execFile` arg arrays. Ships safe-by-refusal on AppImage (ephemeral mount paths systemd can't resolve — see Issue #40). Closes Part 2 of Issue #32. PR #39 merged (`1a2a367`) — 2026-05-22.
 - Sprint 17: Persistent daemon — boot-time session restore (stable ids across restart) + on-demand replay via `session:replay-request`. Closes Part 1 of Issue #32 and the rc.6 replay-history gap. Live-verified on VM: session respawned with same id after SIGTERM/restart, sidebar tab hydrated, idle indicator correct. PR #36 merged — 2026-05-22.
 - Session-list IPC race fix (rc.6) — daemon-side sessions now hydrate as sidebar tabs on client open via `session.list()` poll alongside the broadcast subscription. Replay history for pre-existing sessions still missing — rolls into #32. PR #34 merged — 2026-05-01.
 - Sprint 16: Queued Prompts — daemon-side queue with strict 0/1 per session, broadcast-to-all + reject-only-to-requester, persists to disk, fires on `needs-attention`. Idle-detector default regex relaxed (drop `^` anchor). PR #33 merged — 2026-04-30.
@@ -51,7 +52,7 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `decisions/` — Decision log.
 - `sprints/core-mvp/` — 6 completed sprint files.
 - `sprints/flow/` — 5 completed sprint files.
-- `src/main/` — Electron main: main.ts, preload.ts, ipc-handlers.ts, connection-manager.ts (bridge to daemon), local-daemon.ts (child-process lifecycle), preferences-store.ts, notifications.ts.
+- `src/main/` — Electron main: main.ts, preload.ts, ipc-handlers.ts, connection-manager.ts (bridge to daemon), local-daemon.ts (child-process + service-managed lifecycle), systemd-installer.ts (systemctl --user wrapper), preferences-store.ts, notifications.ts.
 - `src/renderer/` — React renderer: App.tsx, main.tsx, index.html.
 - `src/renderer/components/` — TerminalPane, Sidebar, SessionTab, SortableSessionTab, Header, NewSessionModal, ContextMenu, PreferencesModal, StatusBar.
 - `src/renderer/state/` — sessions.tsx, preferences.tsx (React context + reducer).
@@ -59,16 +60,19 @@ Switchboard is a Slack-style multi-session terminal manager built for developers
 - `src/shared/` — types.ts, themes.ts, protocol.ts.
 - `src/daemon/` — Standalone daemon: daemon.ts (entry), config.ts, pty-manager.ts, idle-detector.ts, output-buffer.ts, session-store.ts, transport.ts, auth.ts.
 - `sprints/daemon/` — 4 sprint files (12–15), all complete.
-- `sprints/flow-ii/` — 5 sprint files (16–20); 16–17 complete, 18–20 planned.
-- `tests/` — 32 test files, 262 tests passing.
+- `sprints/flow-ii/` — 5 sprint files (16–20); 16–18 complete, 19–20 planned.
+- `tests/` — 34 test files, 280 tests passing.
 
 ## Key Decisions
 - DEC-000001: Retire v3 Intelligence; introduce v3 Daemon, v4 Flow II, v5 Intelligence. Daemon-first architecture to support remote sessions and session mobility.
 
 ## Open Questions
-- Issue #38: `OutputBuffer` line-based storage corrupts PTY byte streams — replay-on-demand is broken for TUI output (watch/vim/less/claude). Three compounding bugs: split/join injects spurious newlines at chunk boundaries, line-eviction strips initial state-setting escape codes, and replay races with live `session:data`. Fix is a byte-based buffer + renderer-side replay queue — sized as its own sprint. Queued post-Sprint 18.
+- Issue #38: `OutputBuffer` line-based storage corrupts PTY byte streams — replay-on-demand is broken for TUI output (watch/vim/less/claude). Three compounding bugs: split/join injects spurious newlines at chunk boundaries, line-eviction strips initial state-setting escape codes, and replay races with live `session:data`. Fix is a byte-based buffer + renderer-side replay queue — sized as its own sprint. Queued (not yet scheduled).
+- Issue #40: systemd service installer does not support AppImage builds. AppImages mount at ephemeral `/tmp/.mount_*` paths systemd cannot resolve after the GUI exits, so `ExecStart` goes stale on next launch. Sprint 18 ships safe-by-refusal (install button hidden + IPC rejects when `$APPIMAGE` is set). Proper-fix options: a `--daemon-only` launch flag using `$APPIMAGE`, staging the daemon to a stable location, or a separate `sb-daemon` binary. Enhancement, not yet scheduled.
+- Issue #32 (persistent daemon + service install) has both parts shipped (Sprint 17 + 18). Closed 2026-05-29 referencing #36/#39; AppImage gap tracked separately as #40.
+- Housekeeping (revisit later): Recent Completions has grown to ~28 items, well over the state-tracker spec's ~10 guideline. Trim to the last ~10 in a dedicated pass, leaning on git history as the long-term record.
 
 ## Session Notes
-Daemon (v3) complete and live-verified. Flow II (v4) underway. Sprint 16 (Queued Prompts) shipped daemon-side with broadcast-to-all + reject-only-to-requester semantics. Sprint 17 (Persistent Daemon — Part 1 of Issue #32) shipped: boot-time restore reconstructs sessions from `sessions.json` with stable ids so per-session buffer paths remain valid across restart; `session:replay-request` is a new client→daemon message the renderer fires on mount, closing the rc.6 replay-history gap for pre-existing sessions. Note: PTYs themselves don't survive daemon restart — only metadata + scrollback do; respawned sessions get a fresh shell.
+Sprint 18 (systemd `--user` service installer) merged as PR #39 (`1a2a367`) — version 0.4.0-rc.8, 280 tests passing. The installer lets the localhost daemon outlive the client; the client now detects an installed+running service and connects instead of spawning a child. Live testing on the VM surfaced two issues, both filed: #40 (AppImage service support — Sprint 18 refuses install under `$APPIMAGE` as a stopgap) and #38 (OutputBuffer byte-stream corruption breaking TUI replay, e.g. `watch ls`). Both parts of Issue #32 are now shipped (Sprint 17 + Sprint 18) — #32 is a candidate to close. Next: bundle Sprint 19 (Tray & Notifications) + Sprint 20 (Templates & Groups) into one PR.
 
-ROADMAP.md milestone 4 observables: queued prompts ✅, persistent daemon (Sprint 17 ✅, systemd installer Sprint 18), system tray (Sprint 19), templates + groups (Sprint 20), notification routing.
+ROADMAP.md milestone 4 observables: queued prompts ✅, persistent daemon (Sprint 17 ✅, systemd installer Sprint 18 ✅), system tray (Sprint 19), templates + groups (Sprint 20), notification routing.
