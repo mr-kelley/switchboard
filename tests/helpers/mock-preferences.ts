@@ -20,6 +20,7 @@ export const mockPrefs = {
   cursorBlink: true,
   scrollbackLines: 5000,
   customCssPath: null,
+  notificationPriorities: {},
 };
 
 export const mockUsePreferences = {

@@ -38,6 +38,8 @@ beforeEach(() => {
       onQueueUpdated: vi.fn().mockReturnValue(() => {}),
       onQueueRejected: vi.fn().mockReturnValue(() => {}),
       onQueueSync: vi.fn().mockReturnValue(() => {}),
+      setPriority: vi.fn().mockResolvedValue(undefined),
+      onFocusAttention: vi.fn().mockReturnValue(() => {}),
     },
     daemon: {
       add: vi.fn().mockResolvedValue(undefined),

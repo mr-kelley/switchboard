@@ -39,4 +39,31 @@ describe('notifyIfNeeded', () => {
     notifyIfNeeded('my-project', false);
     expect(mockShow).not.toHaveBeenCalled();
   });
+
+  it('silent priority never fires, even when unfocused', () => {
+    notifyIfNeeded('my-project', false, 'silent');
+    expect(mockShow).not.toHaveBeenCalled();
+  });
+
+  it('high priority fires even when focused', () => {
+    notifyIfNeeded('my-project', true, 'high');
+    expect(mockShow).toHaveBeenCalledOnce();
+  });
+
+  it('normal priority fires when unfocused', () => {
+    notifyIfNeeded('my-project', false, 'normal');
+    expect(mockShow).toHaveBeenCalledOnce();
+  });
+
+  it('normal priority does not fire when focused', () => {
+    notifyIfNeeded('my-project', true, 'normal');
+    expect(mockShow).not.toHaveBeenCalled();
+  });
+
+  it('omitted priority behaves as normal (fires only when unfocused)', () => {
+    notifyIfNeeded('my-project', true);
+    expect(mockShow).not.toHaveBeenCalled();
+    notifyIfNeeded('my-project', false);
+    expect(mockShow).toHaveBeenCalledOnce();
+  });
 });

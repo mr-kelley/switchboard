@@ -78,7 +78,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps):
           <button
             data-testid={`context-menu-item-${i}`}
             onClick={() => {
-              if (item.submenu) return; // parent toggles via hover only
+              if (item.submenu) {
+                setOpenSubmenu(openSubmenu === i ? null : i);
+                return;
+              }
               run(item);
             }}
             style={itemStyle}
