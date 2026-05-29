@@ -91,3 +91,18 @@
 - Plugin API exposing session lifecycle events from the daemon for third-party integrations.
 
 **Dependencies:** Daemon
+
+---
+
+### 6. Fleet
+**Status:** `planned`
+
+**Outcome:** Daemons across multiple hosts can be installed, paired, and managed from the Switchboard client without manual SSH work. Adding a new server is a few clicks instead of a multi-step setup.
+
+**Observable conditions:**
+- **Client-driven remote daemon provisioning:** the user provides SSH connection details for a target host; the client installs the daemon binary (or runs an install script), starts it (as a `systemd --user` service when available), retrieves the 6-digit pairing code over the SSH channel, and completes the pairing handshake automatically.
+- (Future) Remote daemon upgrade — push a newer daemon version to a paired host and restart the service.
+- (Future) Fleet status view — single pane showing daemon version, health, and session count across all paired hosts.
+- (Future) Connection-details management — securely store SSH host/user/key references so re-provisioning or re-pairing does not require re-entry.
+
+**Dependencies:** Daemon (v3). Independent of Flow II (v4) and Intelligence (v5).
