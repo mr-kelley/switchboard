@@ -1,0 +1,56 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000004",
+  "ts": "2026-05-29T00:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "Preferences open-map persistence: empty-default maps adopt saved values wholesale",
+  "decision": "Change PreferencesStore.deepMerge so that a preference whose default value is an empty object ({}) is treated as an open map with dynamic keys and adopts the saved value wholesale, instead of per-key merging it against the empty default (which stripped every saved key). This fixes persistence for notificationPriorities (Sprint 19) and sessionGroups (Sprint 20), and incidentally fixes shortcuts persistence. Three new preference fields are added: notificationPriorities (Record<compositeId, priority>), sessionTemplates (SessionTemplate[]), and sessionGroups (Record<groupKey, {name, collapsed, sessionIds}>).",
+  "context": {
+    "task_description": "Sprints 19-20 require per-session and per-group state to persist across restarts.",
+    "assumptions": [
+      "Fixed-shape objects (terminalColors, uiColors) have non-empty defaults and still per-key merge",
+      "Dynamic-key maps are declared with an empty-object default"
+    ],
+    "spec_refs": [
+      "specs/src/main/preferences-store-spec.md",
+      "specs/src/shared/types-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["persistence", "preferences", "serialization"],
+    "paths": ["src/main/preferences-store.ts", "src/shared/types.ts"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Empty-default-object => open map (adopt saved wholesale)",
+      "chosen": true,
+      "description": "deepMerge treats {} defaults as open maps and takes the saved value as-is. Minimal, also fixes the latent shortcuts-persistence bug."
+    },
+    {
+      "id": "B",
+      "label": "Maintain an explicit allowlist of open-map keys",
+      "chosen": false,
+      "description": "Hard-code which prefs keys are open maps. Rejected: more brittle and requires updating the list for every new map field."
+    }
+  ],
+  "rationale": "The empty-object heuristic is simple and self-maintaining: any new dynamic-key map declared with a {} default persists correctly without special-casing. Per-key merging against an empty default was a latent bug that silently discarded all entries (e.g., shortcuts never persisted).",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Revert the deepMerge change; new prefs fields default empty and are ignored by older code paths."
+  },
+  "links": {
+    "issues": [],
+    "files": ["src/main/preferences-store.ts", "src/shared/types.ts"]
+  },
+  "outcome": {
+    "status": "success",
+    "verified_by": ["tests/main/preferences-store.test.ts open-map round-trip", "319 tests passing"],
+    "notes": null
+  },
+  "tags": ["preferences", "persistence", "deepmerge", "serialization", "flow-ii", "sprint-19", "sprint-20"]
+}

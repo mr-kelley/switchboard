@@ -7,8 +7,12 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run 8+ Cla
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
 - **Session persistence** — sessions restore on app relaunch
+- **System tray** — a tray icon shows the total count of sessions needing attention across all daemons; left-click restores the window and focuses an attention session. Closing the window minimizes to tray (quit from the tray menu or Ctrl+Q)
+- **Notification routing** — set per-session notification priority (right-click a tab → Notifications): High (always alert), Normal (alert when unfocused), Silent (never alert)
 - **Desktop notifications** — OS-level alerts when a background session needs attention
-- **Context menu** — right-click tabs to rename or close sessions
+- **Session templates** — save a session config (host/cwd/command) and one-click spawn it from the New Session dialog
+- **Session groups** — organize tabs under collapsible group headers (by host by default), with drag-and-drop and a "Move to group" menu
+- **Context menu** — right-click tabs to rename, set notifications, move to a group, or close sessions
 - **WebGL-accelerated rendering** — GPU terminal rendering with automatic canvas fallback
 
 ## Quick Start

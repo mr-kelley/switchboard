@@ -1,0 +1,65 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000003",
+  "ts": "2026-05-29T00:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude+user",
+  "decision_class": "B",
+  "title": "System tray design: minimize-to-tray with fallback, embedded badged icons, per-session notification routing",
+  "decision": "Sprint 19 ships a system tray that aggregates needs-attention counts across daemons. Three coupled choices: (1) closing the window minimizes to tray rather than quitting, with a safety fallback to quit-on-close when no tray host exists (createTray returns null); explicit quit via tray menu or Ctrl+Q. (2) The tray icon is embedded as base64 PNG data URLs in a generated module (src/main/tray-icons.ts) with pre-generated numeric badge variants (base, 1-9, 9+), because packaged builds bundle only dist/** and tsc does not copy assets, and Linux trays have no native numeric badge. (3) Notification priority is per-session (high/normal/silent), stored in preferences keyed by composite session id, consulted at the needs-attention transition; silent suppresses only the OS notification, never status/tray accounting.",
+  "context": {
+    "task_description": "Sprint 19 (System Tray & Notification Routing), Flow II milestone.",
+    "assumptions": [
+      "Linux is the primary platform; tray support varies by desktop environment",
+      "Packaged app files include only dist/**, so runtime assets must be embedded or staged",
+      "Users want to mute noisy sessions and escalate important ones"
+    ],
+    "spec_refs": [
+      "specs/src/main/tray-spec.md",
+      "specs/src/main/notifications-spec.md",
+      "specs/src/main/connection-manager-spec.md",
+      "sprints/flow-ii/19-tray-and-notifications.md"
+    ]
+  },
+  "scope": {
+    "areas": ["main-process", "tray", "notifications", "ux"],
+    "paths": ["src/main/tray.ts", "src/main/tray-icons.ts", "src/main/main.ts", "src/main/notifications.ts", "src/main/connection-manager.ts"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Minimize-to-tray with fallback + embedded badged icons",
+      "chosen": true,
+      "description": "Hide-to-tray default, fall back to quit-on-close if no tray host. Embed base64 icon variants (with numeric badges) generated from build/icon.png. Per-session priority in prefs."
+    },
+    {
+      "id": "B",
+      "label": "Tray additive only (no minimize-to-tray)",
+      "chosen": false,
+      "description": "Keep quit-on-close; tray only shows a badge while the window is open. Rejected: the user chose minimize-to-tray with a guardrail."
+    },
+    {
+      "id": "C",
+      "label": "Loose icon asset file + numeric overlay at runtime",
+      "chosen": false,
+      "description": "Ship a PNG file and composite the count at runtime. Rejected: packaged builds don't include loose assets, and runtime image compositing needs an image lib unavailable in main."
+    }
+  ],
+  "rationale": "The user explicitly chose minimize-to-tray with a safety fallback after the Linux-tray-reliability risk was surfaced. Embedding pre-generated badged icons is the only robust way to show a numeric count on Linux given the packaging constraints and absence of a runtime image library. Per-session priority in prefs reuses the existing persistence + broadcast path and keeps the daemon protocol untouched.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Revert Sprint 19 commits; tray.ts/tray-icons.ts are additive and main.ts changes are localized."
+  },
+  "links": {
+    "issues": [],
+    "files": ["src/main/tray.ts", "src/main/main.ts", "src/main/notifications.ts", "src/main/connection-manager.ts"]
+  },
+  "outcome": {
+    "status": "success",
+    "verified_by": ["319 tests passing", "tests/main/tray.test.ts"],
+    "notes": "Tray dnd-independent; numeric-on-icon satisfied via pre-generated variants. AppImage tray icon path inherits the same embedded approach."
+  },
+  "tags": ["tray", "notifications", "priority", "electron", "linux", "flow-ii", "sprint-19"]
+}
