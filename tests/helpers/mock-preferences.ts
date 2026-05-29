@@ -21,6 +21,8 @@ export const mockPrefs = {
   scrollbackLines: 5000,
   customCssPath: null,
   notificationPriorities: {},
+  sessionTemplates: [],
+  sessionGroups: {},
 };
 
 export const mockUsePreferences = {

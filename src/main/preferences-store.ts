@@ -27,6 +27,8 @@ export function getDefaultPreferences(): SwitchboardPreferences {
     customCssPath: null,
     daemonConnections: [],
     notificationPriorities: {},
+    sessionTemplates: [],
+    sessionGroups: {},
   };
 }
 

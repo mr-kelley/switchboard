@@ -81,6 +81,8 @@ Defaults are derived from the current hard-coded Catppuccin Mocha theme:
 - `cursorBlink`: `true`
 - `scrollbackLines`: `5000`
 - `notificationPriorities`: `{}` (empty — sessions default to `normal`)
+- `sessionTemplates`: `[]` (empty)
+- `sessionGroups`: `{}` (empty — sessions fall back to host-default groups)
 
 ## Exports
 - `PreferencesStore` class

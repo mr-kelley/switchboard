@@ -2,6 +2,20 @@ export type SessionStatus = 'working' | 'idle' | 'needs-attention';
 
 export type NotificationPriority = 'high' | 'normal' | 'silent';
 
+export interface SessionTemplate {
+  id: string;
+  name: string;
+  daemonId: string;
+  cwd: string;
+  command?: string;
+}
+
+export interface SessionGroup {
+  name: string;
+  collapsed: boolean;
+  sessionIds: string[];
+}
+
 export interface SessionInfo {
   id: string;
   name: string;
@@ -108,6 +122,8 @@ export interface SwitchboardPreferences {
   customCssPath: string | null;
   daemonConnections: DaemonConnectionConfig[];
   notificationPriorities: Record<string, NotificationPriority>;
+  sessionTemplates: SessionTemplate[];
+  sessionGroups: Record<string, SessionGroup>;
 }
 
 /** API exposed by the preload script via contextBridge. */
