@@ -1,6 +1,6 @@
 ---
 title: Git Hygiene Strategy (Claude Code, Audit-First)
-version: 0.2.0
+version: 0.2.1
 maintained_by: Aire System Architect (ASA)
 domain_tags: [system, governance, git, hygiene]
 status: draft
@@ -86,6 +86,8 @@ The default for any project with testable code. All tests — unit, integration,
 Test categorization (unit vs. integration vs. e2e) is defined in specs and organized in test files, not in branch topology. One stage branch runs all required tests. This keeps branching simple while the spec-spec Test Strategy section ensures thorough coverage.
 
 **Sprint-to-branch mapping:** Each sprint maps 1:1 to a work branch. One sprint, one `work/<timestamp>/<slug>` branch, one promotion path through `stage/test/<slug>` to `main`. Claude MUST NOT mix work from multiple sprints on a single branch, and MUST NOT split a single sprint across multiple work branches.
+
+**Allowed exception — bundled UX sprints:** Closely related, **non-daemon** UX sprints MAY be bundled onto a single work branch and promoted through one `stage/test/<slug>` branch and PR, when the user explicitly authorizes it. This exception MUST NOT be applied to sprints that touch the daemon (protocol, transport, PTY, persistence) — those retain strict 1:1 mapping. Each bundling MUST be recorded as a Class B decision, and per-sprint traceability MUST be preserved via sprint files and scoped commits. See `decisions/events/DEC-000002.json`.
 
 **Promotion flow:**
 1. Create `work/<timestamp>/<slug>` when the sprint starts.
@@ -217,6 +219,6 @@ Regenerate-not-patch. Update version and provenance on every change.
 
 ## Provenance
 - source: Adapted from `templates/team.git-hygiene.md` v0.1.0
-- time: 2026-03-04
+- time: 2026-05-29
 - actor_index: aire-system
-- summary: Git hygiene strategy adapted for Claude Code single-agent execution. Removed Runner intermediary, directive log references, and role-based branch paths. Simplified promotion profiles from A/B/C to A/B — test categorization lives in specs, not branch topology. Preserved commit conventions, branch retention, and human-only remote publishing. Fixed normative references to claude/ paths.
+- summary: Git hygiene strategy adapted for Claude Code single-agent execution. Removed Runner intermediary, directive log references, and role-based branch paths. Simplified promotion profiles from A/B/C to A/B — test categorization lives in specs, not branch topology. Preserved commit conventions, branch retention, and human-only remote publishing. Fixed normative references to claude/ paths. v0.2.1: added an allowed-exception clause to the Sprint-to-branch mapping permitting user-authorized bundling of closely related non-daemon UX sprints (see DEC-000002).

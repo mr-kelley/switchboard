@@ -1,0 +1,58 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000002",
+  "ts": "2026-05-29T00:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude+user",
+  "decision_class": "B",
+  "title": "Permit bundling multiple UX sprints onto one branch/PR (deviation from 1:1 sprint-branch mapping)",
+  "decision": "Allow Sprint 19 (System Tray & Notification Routing) and Sprint 20 (Session Groups & Templates) to be developed on a single work branch (work/<ts>/sprint-19-20-tray-and-organization), promoted through one stage/test branch, and merged via one pull request. This is a conscious, user-authorized deviation from claude.git-hygiene.md's normative 1:1 sprint-to-work-branch mapping. git-hygiene.md is amended to permit this for closely related, non-daemon UX sprints.",
+  "context": {
+    "task_description": "Starting the final two Flow II sprints. Both are pure renderer/main-process UX work and neither touches the daemon. The user's established workflow bundles independent UX sprints to save promotion overhead, while daemon-touching sprints (17, 18) each get their own PR.",
+    "assumptions": [
+      "Sprints 19 and 20 are independent UX features that do not touch the daemon protocol",
+      "Per-sprint traceability is preserved via sprint files, commit scoping, and this decision record",
+      "Auditability requirement of git-hygiene (retain branches) is unaffected"
+    ],
+    "spec_refs": [
+      "claude/claude.git-hygiene.md#sprint-to-branch-mapping",
+      "sprints/flow-ii/19-tray-and-notifications.md",
+      "sprints/flow-ii/20-sidebar-organization.md"
+    ]
+  },
+  "scope": {
+    "areas": ["governance", "git", "process"],
+    "paths": ["claude/claude.git-hygiene.md"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Two PRs (strict 1:1 compliance)",
+      "chosen": false,
+      "description": "Sprint 19 and Sprint 20 each get their own work -> stage/test -> main path and separate PR. Fully compliant with git-hygiene 1:1 mapping; no spec change needed."
+    },
+    {
+      "id": "B",
+      "label": "One bundled PR (logged deviation + spec amendment)",
+      "chosen": true,
+      "description": "Bundle 19+20 on one branch/PR. Record this decision and amend git-hygiene.md with an allowed-exception clause so spec and practice agree."
+    }
+  ],
+  "rationale": "The user explicitly chose to bundle these two UX sprints after the conflict with the normative 1:1 mapping was surfaced. Both sprints are independent, renderer-heavy, and daemon-free, so the per-sprint isolation the rule protects (avoiding entanglement and preserving traceability) is satisfied by sprint files and scoped commits. Amending the spec keeps governance honest rather than leaving an undocumented violation.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Future sprints revert to strict 1:1 mapping; the exception clause can be removed from git-hygiene.md. Bundled branch history remains in git for audit."
+  },
+  "links": {
+    "issues": [],
+    "files": ["claude/claude.git-hygiene.md", "sprints/flow-ii/19-tray-and-notifications.md", "sprints/flow-ii/20-sidebar-organization.md"]
+  },
+  "outcome": {
+    "status": "success",
+    "verified_by": ["claude/claude.git-hygiene.md v0.2.1"],
+    "notes": "Exception scoped to closely related, non-daemon UX sprints; daemon-touching sprints still map 1:1 to branches/PRs."
+  },
+  "tags": ["git", "governance", "process", "sprint", "branching", "flow-ii", "deviation"]
+}
