@@ -1,5 +1,21 @@
 export type SessionStatus = 'working' | 'idle' | 'needs-attention';
 
+export type NotificationPriority = 'high' | 'normal' | 'silent';
+
+export interface SessionTemplate {
+  id: string;
+  name: string;
+  daemonId: string;
+  cwd: string;
+  command?: string;
+}
+
+export interface SessionGroup {
+  name: string;
+  collapsed: boolean;
+  sessionIds: string[];
+}
+
 export interface SessionInfo {
   id: string;
   name: string;
@@ -105,6 +121,9 @@ export interface SwitchboardPreferences {
   scrollbackLines: number;
   customCssPath: string | null;
   daemonConnections: DaemonConnectionConfig[];
+  notificationPriorities: Record<string, NotificationPriority>;
+  sessionTemplates: SessionTemplate[];
+  sessionGroups: Record<string, SessionGroup>;
 }
 
 /** API exposed by the preload script via contextBridge. */
@@ -128,6 +147,8 @@ export interface SwitchboardAPI {
     onSessionCreated(callback: (session: SessionInfo) => void): () => void;
     queuePrompt(sessionId: string, text: string): Promise<void>;
     clearQueue(sessionId: string): Promise<void>;
+    setPriority(sessionId: string, priority: NotificationPriority): Promise<void>;
+    onFocusAttention(callback: () => void): () => void;
     onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void;
     onQueueRejected(callback: (sessionId: string, reason: string) => void): () => void;
     onQueueSync(callback: (queuedPrompts: Record<string, string>) => void): () => void;

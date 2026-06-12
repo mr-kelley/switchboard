@@ -1,80 +1,100 @@
 ---
 title: IPC Handlers Specification
-version: 0.3.0
+version: 0.4.0
 maintained_by: claude
-domain_tags: [electron, ipc, main-process, preferences]
+domain_tags: [electron, ipc, main-process, daemon-client]
 status: active
+platform: claude-code
+license: Apache-2.0
 governs: src/main/ipc-handlers.ts
 ---
 
 # Purpose
-Register IPC handlers that bridge renderer requests to the SessionManager and PreferencesStore. Integrates IdleDetector for status tracking, SessionStore for session persistence, PreferencesStore for user preferences, and notifications for attention events. All IPC channels follow the `<domain>:<action>` convention.
+Register the IPC handlers that bridge renderer requests to the daemon-client layer. Since the v3 Daemon milestone, PTYs live in a standalone daemon process; the Electron main process is a *client*. These handlers therefore route session commands to a `ConnectionManager` (which owns daemon connections), manage daemon connection/pairing, persist user preferences via `PreferencesStore`, and control the localhost `systemd --user` service via the `systemd-installer` module. All channels follow the `<domain>:<action>` convention.
 
-# Architecture
+> **Architecture note:** `SessionManager`, `IdleDetector`, and `SessionStore` are **daemon-side** now (`src/daemon/`), not dependencies of this module. Earlier versions of this spec described a pre-daemon, local-PTY design; this version reflects the daemon-client architecture (DEC-000001).
 
-## Dependencies
-- `SessionManager` — PTY lifecycle management (injected)
-- `IdleDetector` — three-state idle detection (created internally)
-- `SessionStore` — JSON file persistence for sessions (created internally)
-- `PreferencesStore` — JSON file persistence for user preferences (created internally)
-- `notifications` — OS-level attention alerts (imported)
+# Scope
 
-## Initialization Flow
-1. Create `SessionStore`, `PreferencesStore`, and `IdleDetector` instances.
-2. IdleDetector callback: on status change, updates SessionManager, broadcasts `session:status-changed`, fires OS notification if `needs-attention` and app is unfocused.
-3. Restore saved sessions from `SessionStore`. Failed restores (e.g., missing directory) are silently skipped.
-4. Register all IPC handlers (pty, session, and preferences).
-5. Wire SessionManager `onData` and `onExit` events to IdleDetector and renderer broadcasts.
+## Covers
+- Registration of all renderer→main IPC handlers (invoke/handle and send/on).
+- Argument validation at the IPC boundary.
+- Preference load/save/reset and the per-session notification-priority write.
+- Localhost systemd-service control handlers.
+- The `broadcast` helper used to push events to all renderer windows.
+
+## Does Not Cover
+- Daemon connection lifecycle, routing, and the daemon-originated broadcasts (governed by `connection-manager-spec.md`).
+- Preference file format and merge semantics (`preferences-store-spec.md`).
+- systemd unit rendering/control internals (`systemd-installer-spec.md`).
+- Tray and window events (`tray-spec.md`, `main-spec.md`).
+
+# Inputs
+- `registerIpcHandlers(connectionManager: ConnectionManager, localDaemon?: LocalDaemon): void`.
+- A `PreferencesStore` is created internally (default file path).
+- IPC messages from the renderer (validated per channel).
+
+# Outputs
+- Registered `ipcMain.handle` / `ipcMain.on` handlers.
+- Return values to the renderer (e.g., `session:list` → `SessionInfo[]`).
+- `broadcast(channel, data)` sends to every open `BrowserWindow`.
+
+# Responsibilities
 
 ## Broadcast Helper
-`broadcast(channel, data)` sends to all open `BrowserWindow` instances via `webContents.send`.
+`broadcast(channel, data)` iterates `BrowserWindow.getAllWindows()` and calls `webContents.send`.
 
-# IPC Channels
-
-## Renderer → Main (invoke/handle)
+## IPC Channels — Renderer → Main (invoke/handle)
 | Channel | Args | Returns | Side Effects |
 |---|---|---|---|
-| `pty:spawn` | `{ name, cwd, command? }` | `SessionInfo` | Adds to IdleDetector, persists sessions |
-| `pty:resize` | `{ sessionId, cols, rows }` | void | — |
-| `pty:close` | `{ sessionId }` | void | Removes from IdleDetector, persists sessions |
-| `session:list` | — | `SessionInfo[]` | — |
-| `session:rename` | `{ sessionId, name }` | void | Broadcasts `session:renamed`, persists sessions |
+| `pty:spawn` | `{ name, cwd, command?, daemonId? }` | `null` | Routes to `connectionManager.spawn` on `daemonId` or the default daemon; throws if none connected. Session arrives later via `daemon:session-created`. |
+| `pty:resize` | `{ sessionId, cols, rows }` | void | `connectionManager.resize` |
+| `pty:close` | `{ sessionId }` | void | `connectionManager.close` |
+| `session:list` | — | `SessionInfo[]` | `connectionManager.getAllSessions()` (composite ids) |
+| `session:rename` | `{ sessionId, name }` | void | `connectionManager.rename` |
+| `session:queue-prompt` | `{ sessionId, text }` | void | `connectionManager.queuePrompt` |
+| `session:clear-queue` | `{ sessionId }` | void | `connectionManager.clearQueue` |
+| `session:replay-request` | `{ sessionId }` | void | `connectionManager.requestReplay` |
+| `session:set-priority` | `{ sessionId, priority }` | void | Validates priority ∈ high/normal/silent; updates `notificationPriorities` in prefs; broadcasts `preferences:changed` (Sprint 19) |
+| `daemon:add` | `DaemonConnectionConfig` | void | `connectionManager.addConnection` |
+| `daemon:connect` | `daemonId` | void | `connectionManager.connect` |
+| `daemon:disconnect` | `daemonId` | void | `connectionManager.disconnect` |
+| `daemon:remove` | `daemonId` | void | `connectionManager.removeConnection` |
+| `daemon:pair` | `{ host, port, clientName }` | pairing result | `connectionManager.pair` |
+| `daemon:submit-code` | `code` | void | `connectionManager.submitPairingCode` |
+| `daemon:statuses` | — | `Array<{ id, name, status, sessionCount }>` | `connectionManager.getConnectionStatuses()` |
 | `preferences:load` | — | `SwitchboardPreferences` | — |
-| `preferences:save` | `SwitchboardPreferences` | void | Persists to disk, broadcasts `preferences:changed` |
+| `preferences:save` | `SwitchboardPreferences` | void | Persists, broadcasts `preferences:changed` |
 | `preferences:reset` | — | `SwitchboardPreferences` | Deletes prefs file, broadcasts `preferences:changed` |
+| `localService:status` | — | `ServiceStatus` | Adds `installBlocked`/reason when `process.env.APPIMAGE` is set |
+| `localService:install` | — | `ServiceStatus` | Linux-only; rejects under AppImage; stops the child daemon to free the port, installs the unit, marks service-managed |
+| `localService:uninstall` | — | `ServiceStatus` | Linux-only; `systemd.uninstall()` |
+| `localService:start` / `localService:stop` / `localService:restart` | — | `ServiceStatus` | systemctl --user control |
+| `dialog:open-file` | `{ filters? }` | path \| null | Opens a file picker on the focused window |
 
-## Renderer → Main (send/on)
+## IPC Channels — Renderer → Main (send/on)
 | Channel | Args | Side Effects |
 |---|---|---|
-| `pty:input` | `{ sessionId, data }` | Notifies IdleDetector of user input, writes to PTY |
+| `pty:input` | `{ sessionId, data }` | `connectionManager.input`; silently drops invalid args |
 
-## Main → Renderer (broadcast)
-| Channel | Payload | Trigger |
-|---|---|---|
-| `pty:data` | `{ sessionId, data }` | PTY output received |
-| `pty:exit` | `{ sessionId, exitCode }` | PTY process exited |
-| `session:status-changed` | `{ sessionId, status }` | IdleDetector status transition |
-| `session:renamed` | `{ sessionId, name }` | session:rename handler |
-| `preferences:changed` | `SwitchboardPreferences` | preferences:save or preferences:reset handler |
+## Main → Renderer events (reference)
+Broadcast to renderer windows. These originate in `connection-manager` (daemon events), `main` (window/tray), and these handlers (`preferences:changed`): `pty:data`, `pty:exit`, `session:status-changed`, `session:renamed`, `daemon:session-created`, `session:queue-updated`, `session:queue-rejected`, `session:queue-sync`, `daemon:status-changed`, `daemon:connected`, `daemon:auth-failed`, `daemon:pair-challenge`, `daemon:pair-success`, `daemon:pair-failed`, `preferences:changed`, `shortcut:cycle-tab`, `tray:focus-attention`.
 
-# Validation
-- All `handle` handlers MUST validate arguments before forwarding to SessionManager. Invalid arguments throw errors.
-- The `on` handler (`pty:input`) silently drops invalid arguments.
-
-# Session Persistence
-- `persistSessions()` helper saves current session configs (name, cwd, command) to `SessionStore` after every spawn, close, exit, and rename.
-- On startup, saved sessions are restored by re-spawning PTYs with the same config.
-
-# Preferences Handlers
-- `preferences:load` — calls `preferencesStore.load()`, returns the result.
-- `preferences:save` — calls `preferencesStore.save(prefs)`, broadcasts `preferences:changed` with the saved prefs to all windows.
-- `preferences:reset` — calls `preferencesStore.reset()`, broadcasts `preferences:changed` with the returned defaults, returns the defaults.
-
-# Exports
-- `registerIpcHandlers(sessionManager: SessionManager): void`
+# Edge Cases / Fault Handling
+- `handle` handlers MUST validate arguments and throw on invalid input (surfaced to the renderer as a rejected invoke).
+- The `pty:input` `on` handler silently drops invalid arguments (fire-and-forget).
+- `pty:spawn` with no connected daemon throws a user-facing "No daemon connected" error.
+- `localService:install` rejects on non-Linux and under AppImage with an explanatory message.
+- `dialog:open-file` returns null when there is no focused window or the dialog is canceled.
 
 # Test Strategy
-- Unit test: each handler validates its arguments.
-- Unit test: handlers delegate to SessionManager methods.
-- Unit test: IdleDetector is wired to data and input events.
-- Unit test: session persistence is triggered on spawn/close/exit.
+Unit tests in `tests/main/ipc-handlers.test.ts` (Vitest), mocking `electron` and injecting a stub `ConnectionManager`/`LocalDaemon`:
+- Each `handle` validates its arguments and throws on bad input.
+- Handlers delegate to the correct `ConnectionManager` method.
+- `session:set-priority` validates the priority and writes + broadcasts.
+- `localService:*` handlers guard platform/AppImage and delegate to `systemd-installer`.
+
+# Completion Criteria
+- All channels above are registered and validated.
+- Spec matches `src/main/ipc-handlers.ts`.
+- Tests pass.

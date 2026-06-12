@@ -9,7 +9,7 @@ import {
   type SessionInfo,
 } from '../shared/protocol';
 import { notifyIfNeeded, isAppFocused } from './notifications';
-import type { DaemonConnectionConfig } from '../shared/types';
+import type { DaemonConnectionConfig, NotificationPriority } from '../shared/types';
 import { LOCALHOST_DAEMON_ID } from './local-daemon';
 import type { PreferencesStore } from './preferences-store';
 
@@ -36,9 +36,21 @@ function broadcast(channel: string, data: unknown): void {
   }
 }
 
+export interface AttentionSummary {
+  total: number;
+  perDaemon: Array<{
+    id: string;
+    name: string;
+    status: ConnectionStatus;
+    sessionCount: number;
+    attentionCount: number;
+  }>;
+}
+
 export class ConnectionManager {
   private connections = new Map<string, ManagedConnection>();
   private prefsStore: PreferencesStore | undefined;
+  private attentionListeners = new Set<() => void>();
 
   constructor(prefsStore?: PreferencesStore) {
     this.prefsStore = prefsStore;
@@ -194,6 +206,61 @@ export class ConnectionManager {
       }
     }
     return result;
+  }
+
+  /**
+   * Aggregate count of needs-attention sessions across all daemons, with a
+   * per-daemon breakdown. Disconnected daemons are still represented.
+   */
+  getAttentionSummary(): AttentionSummary {
+    let total = 0;
+    const perDaemon = Array.from(this.connections.values()).map((conn) => {
+      let attentionCount = 0;
+      for (const session of conn.sessions.values()) {
+        if (session.status === 'needs-attention') attentionCount++;
+      }
+      total += attentionCount;
+      return {
+        id: conn.config.id,
+        name: conn.config.name,
+        status: conn.status,
+        sessionCount: conn.sessions.size,
+        attentionCount,
+      };
+    });
+    return { total, perDaemon };
+  }
+
+  /**
+   * Subscribe to changes that may affect the attention summary (session
+   * status/create/close, daemon connect/disconnect). Returns an unsubscribe
+   * function. Listener errors are isolated and never break message processing.
+   */
+  onAttentionChange(listener: () => void): () => void {
+    this.attentionListeners.add(listener);
+    return () => {
+      this.attentionListeners.delete(listener);
+    };
+  }
+
+  private notifyAttentionListeners(): void {
+    for (const listener of this.attentionListeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('Attention listener error:', err);
+      }
+    }
+  }
+
+  private resolvePriority(compositeId: string): NotificationPriority {
+    if (!this.prefsStore) return 'normal';
+    try {
+      const prefs = this.prefsStore.load();
+      return prefs.notificationPriorities?.[compositeId] ?? 'normal';
+    } catch {
+      return 'normal';
+    }
   }
 
   /**
@@ -473,6 +540,7 @@ export class ConnectionManager {
             daemonName: conn.config.name,
           });
         }
+        this.notifyAttentionListeners();
         // Re-broadcast the queue snapshot as composite-keyed to the renderer
         if (msg.queuedPrompts) {
           const composite: Record<string, string> = {};
@@ -493,6 +561,7 @@ export class ConnectionManager {
           daemonId: conn.config.id,
           daemonName: conn.config.name,
         });
+        this.notifyAttentionListeners();
         break;
       }
 
@@ -500,6 +569,7 @@ export class ConnectionManager {
         conn.sessions.delete(msg.sessionId);
         const compositeId = `${conn.config.id}:${msg.sessionId}`;
         broadcast('pty:exit', { sessionId: compositeId, exitCode: msg.exitCode ?? 0 });
+        this.notifyAttentionListeners();
         break;
       }
 
@@ -510,16 +580,18 @@ export class ConnectionManager {
       }
 
       case 'session:status': {
+        const compositeId = `${conn.config.id}:${msg.sessionId}`;
         const session = conn.sessions.get(msg.sessionId);
         if (session) {
           session.status = msg.status as SessionInfo['status'];
-          // Fire notification if needs-attention
+          // Fire notification if needs-attention, honoring per-session priority.
+          // Status broadcast + tray accounting happen regardless of priority.
           if (msg.status === 'needs-attention') {
-            notifyIfNeeded(session.name, isAppFocused());
+            notifyIfNeeded(session.name, isAppFocused(), this.resolvePriority(compositeId));
           }
         }
-        const compositeId = `${conn.config.id}:${msg.sessionId}`;
         broadcast('session:status-changed', { sessionId: compositeId, status: msg.status });
+        this.notifyAttentionListeners();
         break;
       }
 
@@ -584,6 +656,7 @@ export class ConnectionManager {
       name: conn.config.name,
       status,
     });
+    this.notifyAttentionListeners();
   }
 
   private scheduleReconnect(conn: ManagedConnection): void {

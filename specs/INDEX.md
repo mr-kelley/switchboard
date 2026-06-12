@@ -40,6 +40,8 @@
 | Idle Detector | `specs/src/main/idle-detector-spec.md` | active |
 | Session Store | `specs/src/main/session-store-spec.md` | active |
 | Notifications | `specs/src/main/notifications-spec.md` | active |
+| Connection Manager | `specs/src/main/connection-manager-spec.md` | active |
+| System Tray | `specs/src/main/tray-spec.md` | active |
 | Shared Types | `specs/src/shared/types-spec.md` | active |
 | Preferences Store | `specs/src/main/preferences-store-spec.md` | active |
 | Theme Presets | `specs/src/shared/themes-spec.md` | active |
@@ -47,3 +49,4 @@
 | Sortable Session Tab | `specs/src/renderer/components/SortableSessionTab-spec.md` | active |
 | Keyboard Shortcuts Hook | `specs/src/renderer/hooks/useKeyboardShortcuts-spec.md` | active |
 | Preferences Modal | `specs/src/renderer/components/PreferencesModal-spec.md` | active |
+| Manage Templates Modal | `specs/src/renderer/components/ManageTemplatesModal-spec.md` | active |

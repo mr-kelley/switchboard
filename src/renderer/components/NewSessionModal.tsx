@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { SessionInfo } from '../../shared/types';
+import type { SessionInfo, SessionTemplate } from '../../shared/types';
 import { usePreferences } from '../state/preferences';
+import ManageTemplatesModal from './ManageTemplatesModal';
 
 interface DaemonStatus {
   id: string;
@@ -23,8 +24,23 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
   const [daemons, setDaemons] = useState<DaemonStatus[]>([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { prefs } = usePreferences();
+  const [templateId, setTemplateId] = useState('');
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const { prefs, updatePrefs } = usePreferences();
   const { uiColors } = prefs;
+  const templates = prefs.sessionTemplates ?? [];
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (t) {
+      setName(t.name);
+      setCwd(t.cwd);
+      setCommand(t.command ?? '');
+      setDaemonId(t.daemonId);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -64,9 +80,21 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
       if (session) {
         onSessionCreated(session);
       }
+      if (saveAsTemplate) {
+        const tpl: SessionTemplate = {
+          id: crypto.randomUUID(),
+          name: name.trim(),
+          daemonId: daemonId || '',
+          cwd: cwd.trim(),
+          command: command.trim() || undefined,
+        };
+        updatePrefs({ sessionTemplates: [...templates, tpl] });
+      }
       setName('');
       setCwd('');
       setCommand('claude');
+      setTemplateId('');
+      setSaveAsTemplate(false);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
@@ -95,6 +123,7 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
   };
 
   return (
+    <>
     <div
       data-testid="modal-overlay"
       onClick={onClose}
@@ -124,6 +153,39 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
           New Session
         </h2>
         <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Template</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select
+                data-testid="template-select"
+                value={templateId}
+                onChange={(e) => applyTemplate(e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer', flex: 1 }}
+              >
+                <option value="">—</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name || '(unnamed)'}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                data-testid="manage-templates"
+                onClick={() => setManageOpen(true)}
+                style={{
+                  padding: '8px 10px',
+                  backgroundColor: 'transparent',
+                  color: uiColors.accentPrimary,
+                  border: `1px solid ${uiColors.buttonBorder}`,
+                  borderRadius: 4,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Manage…
+              </button>
+            </div>
+          </div>
           {daemons.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <label style={labelStyle}>Host</label>
@@ -178,6 +240,15 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
               {error}
             </div>
           )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 12, color: uiColors.appTextMuted, cursor: 'pointer' }}>
+            <input
+              data-testid="save-as-template"
+              type="checkbox"
+              checked={saveAsTemplate}
+              onChange={(e) => setSaveAsTemplate(e.target.checked)}
+            />
+            Save as template
+          </label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button
               type="button"
@@ -216,5 +287,7 @@ export default function NewSessionModal({ isOpen, onClose, onSessionCreated }: N
         </form>
       </div>
     </div>
+    <ManageTemplatesModal isOpen={manageOpen} onClose={() => setManageOpen(false)} />
+    </>
   );
 }

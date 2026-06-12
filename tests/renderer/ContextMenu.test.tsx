@@ -56,4 +56,49 @@ describe('ContextMenu', () => {
     expect(menu.style.top).toBe('250px');
     expect(menu.style.left).toBe('150px');
   });
+
+  it('reveals submenu options and fires the selected one', () => {
+    const high = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <ContextMenu
+        x={0}
+        y={0}
+        onClose={onClose}
+        items={[
+          {
+            label: 'Notifications',
+            submenu: [
+              { label: 'High', action: high },
+              { label: 'Normal', action: vi.fn(), checked: true },
+            ],
+          },
+        ]}
+      />
+    );
+    // Submenu hidden until the parent is opened.
+    expect(screen.queryByText('High')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Notifications'));
+    expect(screen.getByText('High')).toBeInTheDocument();
+    // Checked option shows a check mark.
+    expect(screen.getByText('✓ Normal')).toBeInTheDocument();
+    // Selecting a leaf fires its action and closes the menu.
+    fireEvent.click(screen.getByText('High'));
+    expect(high).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('clicking a submenu parent does not close the menu', () => {
+    const onClose = vi.fn();
+    render(
+      <ContextMenu
+        x={0}
+        y={0}
+        onClose={onClose}
+        items={[{ label: 'Notifications', submenu: [{ label: 'High', action: vi.fn() }] }]}
+      />
+    );
+    fireEvent.click(screen.getByText('Notifications'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

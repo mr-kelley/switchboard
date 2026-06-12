@@ -90,6 +90,18 @@ describe('PreferencesStore', () => {
     expect((prefs as Record<string, unknown>)['unknownKey']).toBeUndefined();
   });
 
+  it('persists open-map preferences (notificationPriorities, shortcuts) across load', () => {
+    const partial = {
+      notificationPriorities: { 'localhost:abc': 'silent', 'vm:def': 'high' },
+      shortcuts: { 'session:new': 'Ctrl+T' },
+    };
+    fs.writeFileSync(storePath, JSON.stringify(partial), 'utf-8');
+    const prefs = store.load();
+    // Dynamic keys must survive — not be stripped against the empty default.
+    expect(prefs.notificationPriorities).toEqual({ 'localhost:abc': 'silent', 'vm:def': 'high' });
+    expect(prefs.shortcuts).toEqual({ 'session:new': 'Ctrl+T' });
+  });
+
   it('reset deletes file and returns defaults', () => {
     store.save(getDefaultPreferences());
     expect(fs.existsSync(storePath)).toBe(true);
@@ -115,5 +127,8 @@ describe('PreferencesStore', () => {
     expect(defaults.sessionOrder).toEqual([]);
     expect(defaults.cursorBlink).toBe(true);
     expect(defaults.scrollbackLines).toBe(5000);
+    expect(defaults.notificationPriorities).toEqual({});
+    expect(defaults.sessionTemplates).toEqual([]);
+    expect(defaults.sessionGroups).toEqual({});
   });
 });

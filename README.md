@@ -7,8 +7,12 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run 8+ Cla
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
 - **Session persistence** — sessions restore on app relaunch
+- **System tray** — a tray icon shows the total count of sessions needing attention across all daemons; left-click restores the window and focuses an attention session. Closing the window minimizes to tray (quit from the tray menu or Ctrl+Q)
+- **Notification routing** — set per-session notification priority (right-click a tab → Notifications): High (always alert), Normal (alert when unfocused), Silent (never alert)
 - **Desktop notifications** — OS-level alerts when a background session needs attention
-- **Context menu** — right-click tabs to rename or close sessions
+- **Session templates** — save a session config (host/cwd/command) and one-click spawn it from the New Session dialog
+- **Session groups** — organize tabs under collapsible group headers (by host by default), with drag-and-drop and a "Move to group" menu
+- **Context menu** — right-click tabs to rename, set notifications, move to a group, or close sessions
 - **WebGL-accelerated rendering** — GPU terminal rendering with automatic canvas fallback
 
 ## Quick Start
@@ -104,35 +108,50 @@ node-pty is a native module that gets rebuilt against the packaged Electron's No
 
 ## Architecture
 
+Switchboard uses a **daemon-client architecture** (v3 Daemon milestone): PTYs run in a standalone daemon process, and the Electron app is a client that connects to one or more daemons over WebSocket + TLS. This enables remote sessions and session mobility across machines.
+
 ```
 src/
-  main/               # Electron main process
-    main.ts            # Entry point, window creation, lifecycle
-    preload.ts         # contextBridge API (pty, session, platform)
-    session-manager.ts # PTY lifecycle (spawn, write, resize, close)
-    ipc-handlers.ts    # IPC registration, idle/persistence/notification wiring
-    idle-detector.ts   # Three-state machine (working/idle/needs-attention)
-    session-store.ts   # JSON file persistence in userData
-    notifications.ts   # OS desktop notifications
-  renderer/            # React frontend (Vite-bundled)
-    App.tsx            # Root component, IPC event subscriptions
-    state/sessions.tsx # React Context + useReducer state management
+  main/                   # Electron main process (daemon client)
+    main.ts               # Entry point, window + tray lifecycle, minimize-to-tray
+    preload.ts            # contextBridge API (pty, session, daemon, preferences)
+    ipc-handlers.ts       # IPC registration -> ConnectionManager / PreferencesStore / service
+    connection-manager.ts # Daemon connections (WS+TLS), routing, attention summary
+    local-daemon.ts       # Localhost daemon lifecycle (child process or systemd service)
+    systemd-installer.ts  # Install/control the localhost daemon as a systemd --user service
+    tray.ts, tray-icons.ts# System tray (attention badge, minimize-to-tray)
+    preferences-store.ts  # JSON preferences persistence in userData
+    notifications.ts      # OS desktop notifications (priority-aware)
+  daemon/                 # Standalone daemon process (owns all PTYs)
+    daemon.ts             # Entry point
+    pty-manager.ts        # PTY lifecycle (spawn, write, resize, close)
+    idle-detector.ts      # Three-state machine (working/idle/needs-attention)
+    output-buffer.ts      # Scrollback buffer for replay
+    session-store.ts      # Session metadata persistence
+    transport.ts, auth.ts, config.ts  # WebSocket+TLS server, token auth, config
+  renderer/               # React frontend (Vite-bundled)
+    App.tsx               # Root component, IPC event subscriptions
+    state/                # React Context + reducers (sessions, preferences, queued-prompts)
     components/
-      TerminalPane.tsx # xterm.js terminal with WebGL, fit, resize handling
-      Sidebar.tsx      # Session list with context menu
-      SessionTab.tsx   # Tab with status dot and pulse animation
-      Header.tsx       # Active session name + new session button
-      NewSessionModal.tsx  # Session creation form
-      ContextMenu.tsx  # Right-click menu
+      TerminalPane.tsx    # xterm.js terminal with WebGL, fit, resize handling
+      Sidebar.tsx         # Collapsible session groups + context menu + drag-and-drop
+      SessionTab.tsx      # Tab with status dot and pulse animation
+      Header.tsx          # Active session name + new session button
+      NewSessionModal.tsx, ManageTemplatesModal.tsx  # Session creation + templates
+      ContextMenu.tsx     # Right-click menu (with submenus)
+      PreferencesModal.tsx, StatusBar.tsx
   shared/
-    types.ts           # Shared types (SessionInfo, SwitchboardAPI, etc.)
+    types.ts              # Shared types (SessionInfo, SwitchboardAPI, etc.)
+    protocol.ts           # Client/daemon wire protocol
+    themes.ts             # Theme presets
 ```
 
 ### Security model
 
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - All main/renderer communication goes through validated IPC channels
-- node-pty runs in the main process only; renderer has no direct Node.js access
+- node-pty runs in the **daemon process**, never in the renderer; the renderer has no direct Node.js access
+- Client↔daemon transport is WebSocket over TLS with token authentication; daemon pairing uses a 6-digit code
 
 ## Configuration
 

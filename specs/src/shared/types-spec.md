@@ -1,6 +1,6 @@
 ---
 title: Shared Types Specification
-version: 0.2.0
+version: 0.4.0
 maintained_by: claude
 domain_tags: [shared, types, preferences, theming]
 status: active
@@ -29,6 +29,20 @@ These types remain as-is:
 - `SessionStatus` — `'working' | 'idle' | 'needs-attention'`
 - `SessionInfo` — `{ id, name, cwd, command, pid, status }`
 - `SessionConfig` — `{ name, cwd, command? }`
+
+## NotificationPriority (Sprint 19)
+
+Per-session OS-notification priority:
+
+```typescript
+export type NotificationPriority = 'high' | 'normal' | 'silent';
+```
+
+- `high` — always fire the OS notification, even when focused.
+- `normal` — fire only when no app window is focused (default).
+- `silent` — never fire the OS notification (tab status + tray count still update).
+
+Stored per composite session ID (`<daemonId>:<sessionId>`) in `SwitchboardPreferences.notificationPriorities`. Set from the renderer via `window.switchboard.session.setPriority(sessionId, priority)`.
 
 # New Types
 
@@ -125,6 +139,36 @@ export interface UIThemeColors {
 }
 ```
 
+## SessionTemplate (Sprint 20)
+
+A reusable session configuration for one-click spawn:
+
+```typescript
+export interface SessionTemplate {
+  id: string;          // stable unique id
+  name: string;        // template display name
+  daemonId: string;    // host daemon id; '' means the local default
+  cwd: string;
+  command?: string;
+}
+```
+
+Stored in `SwitchboardPreferences.sessionTemplates: SessionTemplate[]`.
+
+## Session Groups (Sprint 20)
+
+Sidebar grouping is stored as a map keyed by group id:
+
+```typescript
+// SwitchboardPreferences.sessionGroups
+Record<string, { name: string; collapsed: boolean; sessionIds: string[] }>
+```
+
+- Implicit host-default groups use the key `daemon-<daemonId>` and carry the daemon's display name.
+- A session not explicitly placed in a custom group renders under its host-default group.
+- `collapsed` persists the expand/collapse state per group.
+- `sessionIds` records membership/order within the group (composite session IDs); may contain stale IDs, which consumers filter.
+
 ## SwitchboardPreferences
 
 The complete preferences object persisted to disk:
@@ -163,6 +207,15 @@ export interface SwitchboardPreferences {
   // Terminal behavior
   cursorBlink: boolean;
   scrollbackLines: number;
+
+  // Per-session OS-notification priority, keyed by composite session ID (Sprint 19)
+  notificationPriorities: Record<string, NotificationPriority>;
+
+  // Reusable session configs (Sprint 20)
+  sessionTemplates: SessionTemplate[];
+
+  // Sidebar grouping, keyed by group id (Sprint 20)
+  sessionGroups: Record<string, { name: string; collapsed: boolean; sessionIds: string[] }>;
 }
 ```
 

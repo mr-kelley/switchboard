@@ -69,6 +69,14 @@ const api = {
     requestReplay(sessionId: string) {
       return ipcRenderer.invoke('session:replay-request', { sessionId });
     },
+    setPriority(sessionId: string, priority: string) {
+      return ipcRenderer.invoke('session:set-priority', { sessionId, priority });
+    },
+    onFocusAttention(callback: () => void): () => void {
+      const handler = () => callback();
+      ipcRenderer.on('tray:focus-attention', handler);
+      return () => ipcRenderer.removeListener('tray:focus-attention', handler);
+    },
     onQueueUpdated(callback: (sessionId: string, text: string | null) => void): () => void {
       const handler = (_event: Electron.IpcRendererEvent, args: { sessionId: string; text: string | null }) => {
         callback(args.sessionId, args.text);

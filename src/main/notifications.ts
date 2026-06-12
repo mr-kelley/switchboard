@@ -1,7 +1,14 @@
 import { Notification, BrowserWindow } from 'electron';
+import type { NotificationPriority } from '../shared/types';
 
-export function notifyIfNeeded(sessionName: string, isFocused: boolean): void {
-  if (isFocused) return;
+export function notifyIfNeeded(
+  sessionName: string,
+  isFocused: boolean,
+  priority: NotificationPriority = 'normal'
+): void {
+  if (priority === 'silent') return;
+  // normal fires only when unfocused; high always fires.
+  if (priority !== 'high' && isFocused) return;
 
   if (!Notification.isSupported()) return;
 
