@@ -44,9 +44,24 @@ These features run on the daemon where the PTY output stream lives. The daemon h
 
 ---
 
+## v6 — Fleet (daemon management across hosts)
+
+Features for installing, updating, and monitoring daemons across multiple servers without manual SSH work. Depends on the v3 Daemon architecture; independent of v4 (Flow II) and v5 (Intelligence).
+
+| Issue | Feature | Description | Side |
+|-------|---------|-------------|------|
+| TBD | Remote daemon provisioning | Client installs and starts a daemon on a remote host over SSH, reads the 6-digit pairing code from the SSH channel, and completes the handshake automatically | Client + remote |
+| TBD | Remote daemon upgrade | Push a newer daemon version to a paired host and restart the service | Client + remote |
+| TBD | Fleet status view | Single pane showing daemon version, health, and session count across all paired hosts | Client |
+| TBD | Connection-details management | Securely store SSH host/user/key references so re-provisioning or re-pairing does not require re-entry | Client |
+
+---
+
 ## Notes
 
 - The original backlog items B-01 through B-09 have been mapped to GitHub Issues #2–#10 and reassigned to milestones based on the daemon architecture decision (DEC-000001).
 - Issues #21 and #22 (filed by collaborator LachrymaGhost) are solved structurally by the daemon milestone — no separate implementation needed.
 - v4 (Flow II) and v5 (Intelligence) both depend on v3 (Daemon) but are independent of each other and could be worked in parallel.
+- v6 (Fleet) also depends on v3 (Daemon) and is independent of v4 and v5; remote provisioning surfaced during the Flow II live-test session (2026-05-29) when the user noted the existing pairing flow assumes a pre-installed daemon.
+- Issue numbers for v6 entries are TBD — to be filed by the user (GitHub Issues governance permits Claude to read/close but not create issues).
 - Bug issues (#13, #14, #15, #16, #20) are assigned to LachrymaGhost and tracked separately.
