@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.4.0-rc.11",
+  "version": "0.4.0-rc.12",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -17,9 +17,7 @@
     "test:watch": "vitest",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:deb": "npm run build && electron-builder --linux deb",
-    "dist:appimage": "npm run build && electron-builder --linux AppImage",
-    "dist:snap": "npm run build && electron-builder --linux snap"
+    "dist:appimage": "npm run build && electron-builder --linux AppImage"
   },
   "author": "mrkelley <mrkelley@users.noreply.github.com>",
   "homepage": "https://github.com/mrkelley/switchboard",
@@ -63,19 +61,7 @@
     "linux": {
       "target": [
         {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
           "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "snap",
           "arch": [
             "x64"
           ]
@@ -94,24 +80,6 @@
           "MimeType": "x-scheme-handler/switchboard;"
         }
       }
-    },
-    "deb": {
-      "depends": [
-        "libgtk-3-0",
-        "libnotify4",
-        "libnss3",
-        "libxss1",
-        "libxtst6",
-        "xdg-utils",
-        "libatspi2.0-0",
-        "libuuid1",
-        "libsecret-1-0"
-      ],
-      "afterInstall": "build/after-install.sh"
-    },
-    "snap": {
-      "confinement": "classic",
-      "grade": "devel"
     }
   },
   "devDependencies": {
