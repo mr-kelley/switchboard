@@ -1,0 +1,77 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000005",
+  "ts": "2026-07-31T13:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "AppImage first-launch desktop integration (writes to ~/.local/share)",
+  "decision": "When Switchboard detects at startup that it is running inside an AppImage ($APPIMAGE env var set), it self-installs a .desktop entry to ~/.local/share/applications/switchboard.desktop and hicolor icon PNGs (sizes 16-512) to ~/.local/share/icons/hicolor/*/apps/switchboard.png, then best-effort refreshes the desktop and icon caches. The Exec line points at the current $APPIMAGE path with --no-sandbox %U. The install is idempotent (skipped when the on-disk Exec already matches) and self-updating on version upgrades (path comparison re-writes when $APPIMAGE changes). A Preferences → Daemons → Desktop integration section exposes an explicit Uninstall action for reversibility. Failures are logged; the app continues to function without the integration.",
+  "context": {
+    "task_description": "On Ubuntu 24.04 GNOME (Wayland), the dock/app-grid resolves window icons via .desktop entries matched to app_id, not via BrowserWindow.icon (Wayland has no per-window icon protocol). AppImages do not install a .desktop entry on their own, so the dock falls back to the generic Electron gear icon. Sprint 19 embedded BrowserWindow.icon (rc.10) but that only helps on X11. Live-test on rc.10 confirmed the generic icon still shows on Wayland.",
+    "assumptions": [
+      "Users prefer one packaging format across distros; AppImage is that format going forward (rc.12 will retire .deb + snap targets)",
+      "Writing to ~/.local/share is standard practice for third-party apps; AppImageLauncher / appimaged do the same"
+    ],
+    "spec_refs": [
+      "specs/src/main/desktop-install-spec.md",
+      "specs/src/main/main-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["packaging", "desktop-integration", "linux", "wayland", "appimage"],
+    "paths": [
+      "src/main/desktop-install.ts",
+      "src/main/main.ts",
+      "src/main/ipc-handlers.ts",
+      "src/main/preload.ts",
+      "src/renderer/components/PreferencesModal.tsx",
+      "scripts/gen-app-icon.py"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "AppImage self-install of .desktop + icons on first launch",
+      "chosen": true,
+      "description": "App writes to ~/.local/share/{applications,icons/hicolor/*/apps} on startup when $APPIMAGE is set; idempotent by Exec= comparison; explicit Preferences uninstall. Universal across distros. Standard AppImage integration pattern."
+    },
+    {
+      "id": "B",
+      "label": "Keep multiple packaging targets (.deb + .snap + AppImage) and instruct users to pick",
+      "chosen": false,
+      "description": "Preserves distro-native integration but forces the user to make a distribution choice and multiplies build/verification surface. Rejected: user preference is a single mechanism."
+    },
+    {
+      "id": "C",
+      "label": "Require AppImageLauncher (third-party tool) for integration",
+      "chosen": false,
+      "description": "Cleanest UX when the tool is installed but forces a hard dependency the user cannot control. Rejected: adds a mandatory install step."
+    }
+  ],
+  "rationale": "AppImages are a single-file cross-distro format but come without desktop integration on their own. The self-install pattern is well-established (used by appimaged, AppImageUpdate, and many packaged tools), reversible via the Preferences Uninstall action, and updates itself when the AppImage path changes. Uniform --no-sandbox in the Exec line handles Ubuntu 24.04's unprivileged-user-namespace restriction while trading off the Chromium sandbox layer (acceptable given the app runs its own trusted daemon and the security model already relies on contextIsolation + IPC validation for the renderer).",
+  "risk": {
+    "level": "medium",
+    "reversibility": "high",
+    "rollback": "Delete src/main/desktop-install.ts and the wiring in main.ts/ipc-handlers.ts/preload.ts; remove the DesktopIntegrationSection from PreferencesModal.tsx. The written .desktop entry and icons persist until the user runs the Uninstall action or manually deletes them from ~/.local/share/."
+  },
+  "links": {
+    "issues": [],
+    "prs": ["#44"],
+    "files": [
+      "src/main/desktop-install.ts",
+      "src/main/main.ts",
+      "src/main/ipc-handlers.ts",
+      "src/main/preload.ts",
+      "src/renderer/components/PreferencesModal.tsx",
+      "specs/src/main/desktop-install-spec.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "rc.11 in flight. Live verification on Ubuntu 24.04 GNOME Wayland required to confirm icon resolves in dock and app grid."
+  },
+  "tags": ["packaging", "appimage", "wayland", "linux", "desktop-integration", "rc.11"]
+}

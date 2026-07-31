@@ -167,12 +167,23 @@ export interface SwitchboardAPI {
     onPairSuccess(callback: (name: string) => void): () => void;
     onPairFailed(callback: (reason: string) => void): () => void;
   };
+  desktopIntegration: {
+    status(): Promise<DesktopIntegrationStatus>;
+    uninstall(): Promise<{ removed: boolean; status: DesktopIntegrationStatus }>;
+  };
   preferences: {
     load(): Promise<SwitchboardPreferences>;
     save(prefs: SwitchboardPreferences): Promise<void>;
     reset(): Promise<SwitchboardPreferences>;
     onChanged(callback: (prefs: SwitchboardPreferences) => void): () => void;
   };
+}
+
+export interface DesktopIntegrationStatus {
+  supported: boolean;
+  installed: boolean;
+  appImagePath: string | null;
+  desktopPath: string;
 }
 
 declare global {

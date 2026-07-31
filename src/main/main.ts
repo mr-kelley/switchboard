@@ -6,6 +6,7 @@ import { PreferencesStore } from './preferences-store';
 import { LocalDaemon } from './local-daemon';
 import { createTray, type TrayHandle } from './tray';
 import { APP_ICON } from './app-icon';
+import * as desktopInstall from './desktop-install';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: TrayHandle | null = null;
@@ -96,6 +97,14 @@ app.whenReady().then(async () => {
   }
 
   registerIpcHandlers(connectionManager, localDaemon);
+
+  // Self-install .desktop entry + hicolor icons when running as an AppImage,
+  // so GNOME's dock/app-grid can resolve our window's app_id (Wayland has no
+  // per-window icon protocol). No-op elsewhere. Best-effort; failures logged.
+  void desktopInstall.install().then((r) => {
+    if (r.changed) console.log(`desktop-install: ${r.reason}`);
+  });
+
   mainWindow = createWindow();
 
   // Create the tray. If the platform has no tray host, createTray returns null
