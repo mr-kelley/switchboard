@@ -1,6 +1,6 @@
 ---
 title: Main Process Entry Point Specification
-version: 0.2.0
+version: 0.2.1
 maintained_by: claude
 domain_tags: [electron, main-process]
 status: active
@@ -16,6 +16,7 @@ Define the Electron main process entry point: window creation, security configur
 - Creates a single BrowserWindow on app ready.
 - Window dimensions: 1200×800 default, min 600×400, resizable.
 - Background color: `#1e1e2e` (dark theme).
+- Window icon: `nativeImage.createFromDataURL(APP_ICON)`. `APP_ICON` is generated from `build/icon.png` by `scripts/gen-app-icon.py` and embedded in `src/main/app-icon.ts` because packaged builds only bundle `dist/**` (loose asset files under `build/` are not shipped at runtime).
 - Loads the Vite dev server (`http://localhost:5173`) in development, built HTML file in production.
 
 ## Security Configuration
