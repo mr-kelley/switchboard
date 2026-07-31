@@ -86,7 +86,6 @@
       "desktop": {
         "entry": {
           "Name": "Switchboard",
-          "Exec": "/opt/Switchboard/switchboard --no-sandbox %U",
           "Comment": "Multi-session terminal manager for AI coding workflows",
           "Terminal": "false",
           "Categories": "Development;System;TerminalEmulator;",

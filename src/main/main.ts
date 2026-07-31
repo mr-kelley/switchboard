@@ -1,5 +1,16 @@
 import { app, BrowserWindow, nativeImage } from 'electron';
 import * as path from 'path';
+
+// Ubuntu 24.04 restricts unprivileged user namespaces via AppArmor, breaking
+// the Chromium sandbox for AppImages and other unpackaged binaries. Disable
+// the sandbox layer here so we behave uniformly across Linux distributions.
+// Must be set before app.whenReady(). We still rely on contextIsolation +
+// sandboxed renderer (webPreferences.sandbox: true in createWindow) and IPC
+// argument validation for the renderer's security model. See DEC-000005.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+}
+
 import { ConnectionManager } from './connection-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { PreferencesStore } from './preferences-store';
