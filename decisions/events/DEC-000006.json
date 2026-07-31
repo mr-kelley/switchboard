@@ -1,0 +1,64 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000006",
+  "ts": "2026-07-31T16:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "Retire .deb and .snap targets; AppImage is the sole Linux distribution",
+  "decision": "Remove the .deb and .snap targets from electron-builder's linux.target list, drop the deb.depends / deb.afterInstall / snap config blocks, delete the now-orphaned build/after-install.sh script, and remove the dist:deb / dist:snap npm scripts. Switchboard on Linux is distributed only as a Switchboard-<version>.AppImage from this release forward. Desktop integration for AppImage users is handled by the app itself on first launch (see DEC-000005).",
+  "context": {
+    "task_description": "rc.11 (DEC-000005) shipped AppImage self-install of the .desktop entry and hicolor icons, plus a Preferences uninstall action. Live-verified on Ubuntu 24.04 GNOME (Wayland) 2026-07-31: manual and in-app uninstall behave identically; re-launching restores the integration. This removes the last user-facing reason to prefer .deb over AppImage.",
+    "assumptions": [
+      "Users prefer one packaging format across distros (established in the DEC-000005 conversation)",
+      "AppImage + self-install is a durable pattern (used by appimaged, AppImageUpdate, and many packaged tools)",
+      "Future distros (Fedora, Arch, RHEL, immutable variants) get first-class support via the same AppImage rather than per-distro packages"
+    ],
+    "spec_refs": [
+      "specs/src/main/desktop-install-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["packaging", "distribution", "linux", "build"],
+    "paths": ["package.json", "build/after-install.sh", "README.md", "STATE.md"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Drop .deb and .snap now that AppImage self-installs (chosen)",
+      "chosen": true,
+      "description": "Single format; single maintenance surface; consistent desktop integration path across distros."
+    },
+    {
+      "id": "B",
+      "label": "Keep .deb as a fallback and drop only .snap",
+      "chosen": false,
+      "description": "Retains distro-native install for Debian/Ubuntu users but forces us to maintain two integration paths and two release artifacts, and users still have to make a distribution choice. Rejected: the user explicitly asked for one mechanism."
+    },
+    {
+      "id": "C",
+      "label": "Keep all three targets",
+      "chosen": false,
+      "description": "Status quo before rc.12; multiplies build/verification surface and gives users a choice they do not want."
+    }
+  ],
+  "rationale": "DEC-000005 committed AppImage as the single mechanism once its desktop integration was verified. Verification is complete (rc.11 on Ubuntu 24.04 Wayland: dock icon, app grid, and Preferences uninstall all work; manual uninstall matches the in-app path exactly). Continuing to ship .deb + .snap after that verification would maintain two extra release artifacts and force us to keep multi-format testing forever, in exchange for no user benefit.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Restore package.json linux.target entries, deb + snap config blocks, dist:deb / dist:snap scripts, and build/after-install.sh from history. No code changes required outside packaging config."
+  },
+  "links": {
+    "issues": [],
+    "prs": ["#45"],
+    "files": ["package.json", "README.md", "STATE.md", "build/after-install.sh"],
+    "supersedes": []
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "rc.12 in flight. Verification: dist:appimage still produces a working AppImage; dist:deb and dist:snap scripts absent from package.json."
+  },
+  "tags": ["packaging", "appimage", "linux", "distribution", "retirement", "rc.12"]
+}
