@@ -1,10 +1,11 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import * as path from 'path';
 import { ConnectionManager } from './connection-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { PreferencesStore } from './preferences-store';
 import { LocalDaemon } from './local-daemon';
 import { createTray, type TrayHandle } from './tray';
+import { APP_ICON } from './app-icon';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: TrayHandle | null = null;
@@ -51,6 +52,7 @@ export function createWindow(): BrowserWindow {
     minHeight: 400,
     title: 'Switchboard',
     backgroundColor: '#1e1e2e',
+    icon: nativeImage.createFromDataURL(APP_ICON),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

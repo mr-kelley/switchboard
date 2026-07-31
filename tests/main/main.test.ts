@@ -36,6 +36,9 @@ vi.mock('electron', () => {
     dialog: {
       showOpenDialog: vi.fn(),
     },
+    nativeImage: {
+      createFromDataURL: vi.fn().mockReturnValue({ isEmpty: () => false }),
+    },
   };
 });
 
@@ -108,5 +111,13 @@ describe('createWindow', () => {
     createWindow();
 
     expect(mockLoadURL).toHaveBeenCalledWith('http://localhost:5173');
+  });
+
+  it('passes a window icon to BrowserWindow', async () => {
+    const { createWindow } = await import('../../src/main/main');
+    createWindow();
+
+    const lastCall = allConstructorCalls[allConstructorCalls.length - 1];
+    expect(lastCall.icon).toBeDefined();
   });
 });
