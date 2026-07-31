@@ -1,0 +1,70 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000008",
+  "ts": "2026-07-31T22:15:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "Daemon distributable — tarball with bundled ws + node-pty, assume Node 20 on target",
+  "decision": "The remote-installable daemon ships as a gzipped tar file (`switchboard-daemon-<version>-linux-x64.tar.gz`, ~176 KB) built by `scripts/build-daemon-tarball.sh` and produced by the `dist:daemon-tarball` npm script. Contents: `dist/daemon/` (compiled TS), `node_modules/ws/` (pure JS), and `node_modules/node-pty/` including the linux-x64 native prebuild (`build/Release/pty.node`) that our AppImage build already produces via `@electron/rebuild`. Target hosts must have `node` version 20.x on `$PATH` — v1 does not bundle Node, and the ABI-locked prebuild is not compatible with Node 22+ without a rebuild.",
+  "context": {
+    "task_description": "Sprint 21 needs to install a runnable daemon on a fresh Linux host over SSH.",
+    "assumptions": [
+      "Target hosts in v1 are Linux x86_64 with systemd --user available",
+      "Node 20 is broadly available on target hosts (Ubuntu 22.04/24.04, Debian 12+, RHEL 9, Fedora 38+ ship or have easy access to it)",
+      "Ballooning the AppImage with a bundled 60-80 MB Node runtime for a feature only some users will invoke is not worth it in v1",
+      "electron-builder's @electron/rebuild step gives us a Node-20-ABI-compatible pty.node for free during our normal AppImage build"
+    ],
+    "spec_refs": [
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["packaging", "distribution", "remote-provisioning", "native-modules"],
+    "paths": ["scripts/build-daemon-tarball.sh", "package.json"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Tarball with bundled deps, assume system Node 20 (chosen)",
+      "chosen": true,
+      "description": "Smallest artifact (~176 KB). Reuses build artifacts we already produce. Zero new build-time tooling. Constraint: exact Node ABI match required — Node 22 needs a separate prebuild variant."
+    },
+    {
+      "id": "B",
+      "label": "Standalone daemon binary via pkg / nexe / bun compile",
+      "chosen": false,
+      "description": "Single-file drop-in, no Node dependency on target. Rejected for v1: adds ~60 MB per binary, introduces a new build-chain dependency (pkg is unmaintained; nexe and bun-compile have their own gotchas), and native modules like node-pty need per-target-arch rebuilds either way."
+    },
+    {
+      "id": "C",
+      "label": "Pure scp of source, `npm install` on the target",
+      "chosen": false,
+      "description": "Simplest client-side. Rejected: requires build tools (make, g++, python) on the target for node-pty compilation, which many minimal server images lack. Also multiplies install time from ~5s to ~60s."
+    },
+    {
+      "id": "D",
+      "label": "Bundled Node in the tarball",
+      "chosen": false,
+      "description": "Removes the Node-20 requirement. Rejected for v1: quadruples the tarball size (~60 MB vs. 176 KB) and adds a second binary we would need to keep current on security patches. Reconsider if the Node-20 constraint bites real users."
+    }
+  ],
+  "rationale": "The narrowest artifact that ships the daemon in a runnable state is the winner for a first cut — we can broaden compatibility later without changing the on-target file layout. Node 20 is the current LTS through April 2026 (matches Electron 33's ABI, matches Ubuntu 24.04's default) and can be installed on any target with nodesource or a package manager. When we hit a real user on Node 22, we build a second prebuild variant and pick the right one at install time; when we hit a target without any Node, we ship a bundled-Node variant. Both are incremental changes to this same tarball-based flow.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Delete scripts/build-daemon-tarball.sh and the dist:daemon-tarball script; regenerate as a standalone binary or a source-only tarball as needed. The remote-provisioner treats the artifact as an opaque bundle."
+  },
+  "links": {
+    "issues": [47],
+    "prs": [],
+    "files": ["scripts/build-daemon-tarball.sh", "package.json", "specs/src/main/remote-provisioner-spec.md"]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: tarball extracts and daemon starts without ABI errors under Node 20 on target Ubuntu VM. Live provisioning completes step 7 (daemon becomes ready)."
+  },
+  "tags": ["packaging", "daemon", "distribution", "native-modules", "node-pty", "sprint-21", "v6-fleet"]
+}

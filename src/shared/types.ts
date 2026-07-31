@@ -171,6 +171,12 @@ export interface SwitchboardAPI {
     status(): Promise<DesktopIntegrationStatus>;
     uninstall(): Promise<{ removed: boolean; status: DesktopIntegrationStatus }>;
   };
+  remoteProvision: {
+    start(req: RemoteProvisionRequest): Promise<void>;
+    cancel(): Promise<void>;
+    retryFrom(step: RemoteProvisionStepId): Promise<void>;
+    onProgress(callback: (state: RemoteProvisionStepState[]) => void): () => void;
+  };
   preferences: {
     load(): Promise<SwitchboardPreferences>;
     save(prefs: SwitchboardPreferences): Promise<void>;
@@ -184,6 +190,35 @@ export interface DesktopIntegrationStatus {
   installed: boolean;
   appImagePath: string | null;
   desktopPath: string;
+}
+
+export type RemoteProvisionStepId =
+  | 'test-connection' | 'probe-target' | 'check-existing' | 'upload-tarball'
+  | 'extract' | 'install-service' | 'wait-ready' | 'read-code'
+  | 'complete-pairing' | 'cleanup';
+
+export type RemoteProvisionStepStatus = 'pending' | 'active' | 'done' | 'failed';
+
+export interface RemoteProvisionStepState {
+  id: RemoteProvisionStepId;
+  label: string;
+  status: RemoteProvisionStepStatus;
+  message?: string;
+  errorKind?: string;
+  errorDetail?: string;
+}
+
+export interface RemoteProvisionTarget {
+  host: string;
+  user: string;
+  port: number;
+  identityFile?: string;
+}
+
+export interface RemoteProvisionRequest {
+  target: RemoteProvisionTarget;
+  daemonName?: string;
+  daemonPort: number;
 }
 
 declare global {

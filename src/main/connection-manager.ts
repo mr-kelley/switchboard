@@ -51,9 +51,39 @@ export class ConnectionManager {
   private connections = new Map<string, ManagedConnection>();
   private prefsStore: PreferencesStore | undefined;
   private attentionListeners = new Set<() => void>();
+  private pairSuccessOnceListeners: Array<() => void> = [];
+  private pairFailedOnceListeners: Array<(reason: string) => void> = [];
 
   constructor(prefsStore?: PreferencesStore) {
     this.prefsStore = prefsStore;
+  }
+
+  /**
+   * Register a one-shot callback fired the next time a pairing succeeds.
+   * Used by the remote-provisioner to await the daemon side of a pair. The
+   * listener is removed automatically when fired (or when a matching
+   * onPairFailedOnce fires — the two are mutually exclusive per attempt).
+   */
+  onPairSuccessOnce(cb: () => void): void {
+    this.pairSuccessOnceListeners.push(cb);
+  }
+
+  onPairFailedOnce(cb: (reason: string) => void): void {
+    this.pairFailedOnceListeners.push(cb);
+  }
+
+  /** Fire (and drain) both once-listener queues for a pair-success event. */
+  private firePairSuccess(): void {
+    const cbs = this.pairSuccessOnceListeners.splice(0);
+    this.pairFailedOnceListeners.splice(0); // failed listeners for this attempt are moot
+    for (const cb of cbs) { try { cb(); } catch (err) { console.error('pair-success listener error:', err); } }
+  }
+
+  /** Fire (and drain) both once-listener queues for a pair-failed event. */
+  private firePairFailed(reason: string): void {
+    const cbs = this.pairFailedOnceListeners.splice(0);
+    this.pairSuccessOnceListeners.splice(0);
+    for (const cb of cbs) { try { cb(reason); } catch (err) { console.error('pair-failed listener error:', err); } }
   }
 
   /**
@@ -402,6 +432,7 @@ export class ConnectionManager {
             }
           } else if (msg.type === 'pair:fail') {
             broadcast('daemon:pair-failed', { reason: msg.reason });
+            this.firePairFailed(msg.reason);
             ws.close();
           }
         } catch {
@@ -429,6 +460,7 @@ export class ConnectionManager {
   submitPairingCode(code: string): void {
     if (!this.pairingWs || this.pairingWs.readyState !== WebSocket.OPEN) {
       broadcast('daemon:pair-failed', { reason: 'No pairing in progress' });
+      this.firePairFailed('No pairing in progress');
       return;
     }
     this.pairingWs.send(JSON.stringify({ type: 'pair:response', seq: 2, code }));
@@ -505,6 +537,7 @@ export class ConnectionManager {
     // Broadcast connected status
     broadcast('daemon:connected', { daemonId: config.id, name: config.name });
     broadcast('daemon:pair-success', { name: config.name });
+    this.firePairSuccess();
     this.setStatus(conn, 'connected');
 
     // Request session list (the daemon already sent it after auth:ok,

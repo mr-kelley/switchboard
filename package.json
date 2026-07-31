@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.4.0-rc.12",
+  "version": "0.5.0-rc.1",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:appimage": "npm run build && electron-builder --linux AppImage"
+    "dist:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:daemon-tarball": "npm run build:daemon && bash scripts/build-daemon-tarball.sh"
   },
   "author": "mrkelley <mrkelley@users.noreply.github.com>",
   "homepage": "https://github.com/mrkelley/switchboard",

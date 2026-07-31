@@ -185,6 +185,22 @@ const api = {
       return ipcRenderer.invoke('desktop-integration:uninstall');
     },
   },
+  remoteProvision: {
+    start(req: unknown) {
+      return ipcRenderer.invoke('remoteProvisioner:start', req);
+    },
+    cancel() {
+      return ipcRenderer.invoke('remoteProvisioner:cancel');
+    },
+    retryFrom(step: string) {
+      return ipcRenderer.invoke('remoteProvisioner:retryFrom', step);
+    },
+    onProgress(callback: (state: unknown) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state);
+      ipcRenderer.on('remoteProvisioner:progress', handler);
+      return () => ipcRenderer.removeListener('remoteProvisioner:progress', handler);
+    },
+  },
   preferences: {
     load() {
       return ipcRenderer.invoke('preferences:load');
