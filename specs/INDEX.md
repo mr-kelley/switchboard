@@ -42,6 +42,7 @@
 | Notifications | `specs/src/main/notifications-spec.md` | active |
 | Connection Manager | `specs/src/main/connection-manager-spec.md` | active |
 | System Tray | `specs/src/main/tray-spec.md` | active |
+| Desktop Integration | `specs/src/main/desktop-install-spec.md` | active |
 | Shared Types | `specs/src/shared/types-spec.md` | active |
 | Preferences Store | `specs/src/main/preferences-store-spec.md` | active |
 | Theme Presets | `specs/src/shared/themes-spec.md` | active |

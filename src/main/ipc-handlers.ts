@@ -3,6 +3,7 @@ import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
 import type { LocalDaemon } from './local-daemon';
 import * as systemd from './systemd-installer';
+import * as desktopInstall from './desktop-install';
 import type { SwitchboardPreferences, NotificationPriority } from '../shared/types';
 
 const NOTIFICATION_PRIORITIES: NotificationPriority[] = ['high', 'normal', 'silent'];
@@ -219,6 +220,17 @@ export function registerIpcHandlers(
   ipcMain.handle('localService:restart', async () => {
     await systemd.restart();
     return systemd.getStatus();
+  });
+
+  // --- Desktop integration (AppImage self-install) ---
+
+  ipcMain.handle('desktop-integration:status', () => {
+    return desktopInstall.getStatus();
+  });
+
+  ipcMain.handle('desktop-integration:uninstall', async () => {
+    const result = await desktopInstall.uninstall();
+    return { ...result, status: desktopInstall.getStatus() };
   });
 
   // --- Dialog ---

@@ -25,6 +25,9 @@ vi.mock('electron', () => {
       whenReady: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       getPath: vi.fn().mockReturnValue('/tmp/switchboard-test-main'),
+      commandLine: {
+        appendSwitch: vi.fn(),
+      },
     },
     BrowserWindow: Object.assign(BrowserWindowConstructor, {
       getAllWindows: vi.fn().mockReturnValue([]),

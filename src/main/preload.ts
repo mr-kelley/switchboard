@@ -177,6 +177,14 @@ const api = {
       },
     },
   },
+  desktopIntegration: {
+    status() {
+      return ipcRenderer.invoke('desktop-integration:status');
+    },
+    uninstall() {
+      return ipcRenderer.invoke('desktop-integration:uninstall');
+    },
+  },
   preferences: {
     load() {
       return ipcRenderer.invoke('preferences:load');

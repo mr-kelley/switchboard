@@ -159,6 +159,90 @@ function LocalServiceSection({ uiColors, labelStyle }: {
   );
 }
 
+interface DesktopIntegrationStatusUI {
+  supported: boolean;
+  installed: boolean;
+  appImagePath: string | null;
+  desktopPath: string;
+}
+
+function DesktopIntegrationSection({ uiColors, labelStyle }: {
+  uiColors: Record<string, string>;
+  labelStyle: React.CSSProperties;
+}): React.ReactElement | null {
+  const [status, setStatus] = useState<DesktopIntegrationStatusUI | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await (window as any).switchboard.desktopIntegration.status();
+      setStatus(s);
+    } catch {
+      setStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  if (!status) return null;
+  // Only show the section when we're running as an AppImage; on other packaging
+  // the desktop entry is handled by the system installer (apt, snap, etc.).
+  if (!status.supported) return null;
+
+  const handleUninstall = async () => {
+    if (!window.confirm(
+      'Remove the Switchboard desktop entry and icons from your applications menu?\n\nThe AppImage itself will not be affected. Re-launching the AppImage will re-install the entry.'
+    )) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await (window as any).switchboard.desktopIntegration.uninstall();
+      setStatus(r.status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const btn: React.CSSProperties = {
+    padding: '2px 10px', fontSize: 11, backgroundColor: 'transparent',
+    border: `1px solid ${uiColors.inputBorder}`, borderRadius: 3,
+    color: uiColors.appText, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1,
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <label style={labelStyle}>Desktop integration</label>
+      <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 8 }}>
+        Registers Switchboard in your applications menu so the correct icon and name appear in the dock and window list.
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 8px', backgroundColor: uiColors.inputBg, borderRadius: 4,
+      }}>
+        <span style={{ flex: 1, fontSize: 13, color: uiColors.appText }}>
+          {status.installed ? 'Installed' : 'Not installed'}
+        </span>
+        {status.installed && (
+          <button
+            data-testid="desktop-integration-uninstall"
+            onClick={handleUninstall}
+            disabled={busy}
+            style={{ ...btn, color: uiColors.errorText, borderColor: uiColors.errorText }}
+          >Uninstall</button>
+        )}
+      </div>
+      {error && (
+        <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 6 }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
 function DaemonSection({ uiColors, inputStyle, labelStyle }: {
   uiColors: Record<string, string>;
   inputStyle: React.CSSProperties;
@@ -267,6 +351,7 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
       </div>
 
       <LocalServiceSection uiColors={uiColors} labelStyle={labelStyle} />
+      <DesktopIntegrationSection uiColors={uiColors} labelStyle={labelStyle} />
 
       {statuses.length > 0 && (
         <div style={{ marginBottom: 16 }}>
