@@ -191,6 +191,23 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
 
         {phase !== 'form' && (
           <>
+            {steps.length === 0 && phase === 'running' && (
+              <div style={{ color: uiColors.appTextMuted, fontSize: 13, marginBottom: 12 }}>
+                Starting…
+              </div>
+            )}
+            {error && (
+              <div
+                data-testid="modal-error"
+                style={{
+                  padding: '8px 10px', marginBottom: 12,
+                  backgroundColor: uiColors.inputBg, borderRadius: 4,
+                  color: uiColors.errorText, fontSize: 12, wordBreak: 'break-word',
+                }}
+              >
+                {error}
+              </div>
+            )}
             <div style={{ marginBottom: 18 }}>
               {steps.map((s) => (
                 <div key={s.id} data-testid={`step-${s.id}`} style={{
@@ -238,12 +255,18 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
 
             {phase === 'failed' && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                {failedStep && (
+                {failedStep ? (
                   <button
                     data-testid="retry-button"
                     onClick={() => void startProvision(failedStep.id)}
                     style={primaryBtn}
                   >Retry from “{failedStep.label}”</button>
+                ) : (
+                  <button
+                    data-testid="restart-button"
+                    onClick={() => void startProvision()}
+                    style={primaryBtn}
+                  >Retry from start</button>
                 )}
                 <button onClick={onClose} style={btn}>Close</button>
               </div>
