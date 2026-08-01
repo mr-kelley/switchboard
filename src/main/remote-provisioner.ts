@@ -377,15 +377,28 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Resolve the packaged daemon-tarball path. In dev, the tarball lives under
- * release/ next to the app root; when running from a packaged AppImage, we
- * expect it to be pre-built and packaged next to the app resources.
+ * Resolve the packaged daemon-tarball path. Packaged AppImages carry the
+ * tarball under a stable name in process.resourcesPath (see the
+ * `build.extraResources` entry in package.json). In dev, we fall back to
+ * versioned/stable copies in release/.
  */
 export function defaultTarballPath(version: string): string {
-  const filename = `switchboard-daemon-${version}-linux-x64.tar.gz`;
-  const packaged = path.join(process.resourcesPath || '', filename);
-  if (fs.existsSync(packaged)) return packaged;
-  const dev = path.join(app.getAppPath(), '..', '..', 'release', filename);
-  if (fs.existsSync(dev)) return dev;
-  return path.join(process.cwd(), 'release', filename);
+  const versioned = `switchboard-daemon-${version}-linux-x64.tar.gz`;
+  const stable = 'switchboard-daemon.tar.gz';
+
+  // Packaged: extraResources copies release/switchboard-daemon.tar.gz here.
+  const packagedStable = path.join(process.resourcesPath || '', stable);
+  if (fs.existsSync(packagedStable)) return packagedStable;
+
+  // Dev: repo-relative release directory.
+  for (const name of [stable, versioned]) {
+    const dev = path.join(app.getAppPath(), '..', '..', 'release', name);
+    if (fs.existsSync(dev)) return dev;
+    const cwd = path.join(process.cwd(), 'release', name);
+    if (fs.existsSync(cwd)) return cwd;
+  }
+
+  // Last-ditch: return the packaged path so the error message points at the
+  // right place ("expected the AppImage to bundle the tarball at ...").
+  return packagedStable;
 }

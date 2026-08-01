@@ -93,5 +93,10 @@ EOF
 mkdir -p "$OUT_DIR"
 tar -czf "$OUT_DIR/$OUT_FILE" -C "$STAGE" switchboard-daemon
 
+# Also emit a versionless copy so electron-builder's extraResources can grab a
+# stable filename regardless of the current version bump. The versioned file
+# is kept for release-asset uploads and manual install docs.
+cp "$OUT_DIR/$OUT_FILE" "$OUT_DIR/switchboard-daemon.tar.gz"
+
 SIZE=$(du -h "$OUT_DIR/$OUT_FILE" | cut -f1)
-echo "wrote $OUT_DIR/$OUT_FILE ($SIZE)"
+echo "wrote $OUT_DIR/$OUT_FILE ($SIZE) and switchboard-daemon.tar.gz"
