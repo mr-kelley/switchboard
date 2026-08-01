@@ -129,6 +129,13 @@ const api = {
       ipcRenderer.on('daemon:connected', handler);
       return () => ipcRenderer.removeListener('daemon:connected', handler);
     },
+    onError(callback: (err: { daemonId: string; daemonName: string; code: string; message: string }) => void): () => void {
+      const handler = (_event: Electron.IpcRendererEvent, err: { daemonId: string; daemonName: string; code: string; message: string }) => {
+        callback(err);
+      };
+      ipcRenderer.on('daemon:error', handler);
+      return () => ipcRenderer.removeListener('daemon:error', handler);
+    },
     pair(host: string, port: number, clientName: string) {
       return ipcRenderer.invoke('daemon:pair', { host, port, clientName });
     },

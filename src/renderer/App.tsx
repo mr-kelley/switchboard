@@ -82,6 +82,15 @@ function AppContent(): React.ReactElement {
   // Listen for daemon-created sessions (async spawn via daemon).
   // Also hydrate from main's current session list to recover from any
   // session-created broadcasts that fired before this listener attached.
+  // Surface daemon-side errors (e.g., SPAWN_FAILED for a bad cwd) instead of
+  // dropping them into the main-process console where the user never sees them.
+  useEffect(() => {
+    const unsub = (window as any).switchboard.daemon.onError?.((err: { daemonName: string; code: string; message: string }) => {
+      window.alert(`Daemon “${err.daemonName}” error [${err.code}]: ${err.message}`);
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     const knownIds = new Set<string>();
     const unsub = window.switchboard.session.onSessionCreated((session: import('../shared/types').SessionInfo) => {
