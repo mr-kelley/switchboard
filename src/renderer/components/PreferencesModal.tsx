@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences } from '../state/preferences';
 import { THEME_PRESETS } from '../../shared/themes';
 import { DEFAULT_SHORTCUTS } from '../hooks/useKeyboardShortcuts';
+import RemoteProvisioningModal from './RemoteProvisioningModal';
 
 function parseConnectionString(connStr: string): { host: string; port: number; token: string; fingerprint: string } | null {
   try {
@@ -254,6 +255,7 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'code'>('idle');
   const [error, setError] = useState('');
   const [statuses, setStatuses] = useState<DaemonStatus[]>([]);
+  const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   const refreshStatuses = useCallback(async () => {
     try {
@@ -406,16 +408,31 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
               />
             </div>
           </div>
-          <button
-            onClick={handlePair}
-            style={{
-              padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
-              color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
-              fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Pair
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handlePair}
+              style={{
+                padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
+                color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Pair
+            </button>
+            {window.switchboard.platform === 'linux' && (
+              <button
+                data-testid="add-remote-daemon"
+                onClick={() => setRemoteModalOpen(true)}
+                style={{
+                  padding: '6px 14px', backgroundColor: 'transparent',
+                  color: uiColors.appText, border: `1px solid ${uiColors.inputBorder}`,
+                  borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Add remote daemon…
+              </button>
+            )}
+          </div>
         </>
       )}
 
@@ -459,6 +476,11 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
       {error && (
         <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 8 }}>{error}</div>
       )}
+
+      <RemoteProvisioningModal
+        isOpen={remoteModalOpen}
+        onClose={() => { setRemoteModalOpen(false); refreshStatuses(); }}
+      />
     </div>
   );
 }

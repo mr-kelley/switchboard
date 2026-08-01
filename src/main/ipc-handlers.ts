@@ -1,9 +1,11 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, dialog, app } from 'electron';
 import { PreferencesStore } from './preferences-store';
 import { ConnectionManager, type DaemonConnectionConfig } from './connection-manager';
 import type { LocalDaemon } from './local-daemon';
 import * as systemd from './systemd-installer';
 import * as desktopInstall from './desktop-install';
+import { RemoteProvisioner, defaultTarballPath, type StepId } from './remote-provisioner';
+import type { RemoteProvisionRequest } from '../shared/types';
 import type { SwitchboardPreferences, NotificationPriority } from '../shared/types';
 
 const NOTIFICATION_PRIORITIES: NotificationPriority[] = ['high', 'normal', 'silent'];
@@ -220,6 +222,48 @@ export function registerIpcHandlers(
   ipcMain.handle('localService:restart', async () => {
     await systemd.restart();
     return systemd.getStatus();
+  });
+
+  // --- Remote daemon provisioning ---
+
+  let activeProvisioner: RemoteProvisioner | null = null;
+  // We keep the provisioner around after a failed run so the renderer can call
+  // retryFrom; only cleared on success or explicit cancel.
+
+  ipcMain.handle('remoteProvisioner:start', async (_event, req: RemoteProvisionRequest) => {
+    if (activeProvisioner) {
+      throw new Error('A provisioning attempt is already in progress. Cancel it first.');
+    }
+    const tarballPath = defaultTarballPath(app.getVersion());
+    activeProvisioner = new RemoteProvisioner(
+      { ...req, tarballPath, daemonPort: req.daemonPort || 3717 },
+      connectionManager,
+      (state) => broadcast('remoteProvisioner:progress', state),
+    );
+    try {
+      await activeProvisioner.run();
+      activeProvisioner = null;
+    } catch (err) {
+      // Leave activeProvisioner set so the renderer can retryFrom.
+      throw err;
+    }
+  });
+
+  ipcMain.handle('remoteProvisioner:cancel', () => {
+    if (activeProvisioner) {
+      activeProvisioner.cancel();
+      activeProvisioner = null;
+    }
+  });
+
+  ipcMain.handle('remoteProvisioner:retryFrom', async (_event, step: StepId) => {
+    if (!activeProvisioner) throw new Error('No provisioning attempt to retry.');
+    try {
+      await activeProvisioner.run(step);
+      activeProvisioner = null;
+    } catch (err) {
+      throw err;
+    }
   });
 
   // --- Desktop integration (AppImage self-install) ---

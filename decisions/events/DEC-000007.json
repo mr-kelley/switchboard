@@ -1,0 +1,64 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000007",
+  "ts": "2026-07-31T22:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "SSH transport for remote provisioning — shell out to system ssh/scp",
+  "decision": "The remote-provisioning flow talks to target hosts by shelling out to the system `ssh` and `scp` binaries via `child_process.execFile` with strict argument arrays. It does not embed an npm SSH library (e.g., `ssh2`). All ssh/scp invocations pass every user-derived value as a distinct argv element with input validated against strict character-class regexes (`HOST_RE`, `USER_RE`, path allowlists); no argument reaches a shell interpreter.",
+  "context": {
+    "task_description": "Sprint 21 needs to install and start a daemon on a fresh Linux host, upload a tarball, run systemctl commands, and read a file — all from the client machine over SSH.",
+    "assumptions": [
+      "Target users already have a working SSH setup (agent, keys, known_hosts) to their servers",
+      "Adding a new native/wasm dependency for SSH is a maintenance and audit burden we can avoid",
+      "The 10-step install flow does not need low-level features like port forwarding, interactive shells, or long-lived multiplexed channels — one-shot commands suffice"
+    ],
+    "spec_refs": [
+      "specs/src/main/ssh-client-spec.md",
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["remote-provisioning", "ssh", "security", "process-management"],
+    "paths": ["src/main/ssh-client.ts", "src/main/remote-provisioner.ts"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Shell out to system ssh/scp (chosen)",
+      "chosen": true,
+      "description": "Zero new npm deps. Automatic support for the user's existing SSH agent, keys, ~/.ssh/config, and known_hosts. Errors classified from stderr text. Interactive password prompts are disabled via BatchMode=yes."
+    },
+    {
+      "id": "B",
+      "label": "Embed the `ssh2` npm package",
+      "chosen": false,
+      "description": "Native-code addon; would let us implement password auth, richer error introspection, and streaming. Rejected: adds a large audited surface for features we don't need in v1, and duplicates ~/.ssh/config behavior we get for free by shelling out."
+    },
+    {
+      "id": "C",
+      "label": "Use libssh via napi-rs bindings",
+      "chosen": false,
+      "description": "Same tradeoffs as ssh2 with more integration risk on packaged builds."
+    }
+  ],
+  "rationale": "For a v1 install flow that is fundamentally 'run 8 one-shot commands and one file transfer,' shell-out to `ssh`/`scp` is the shortest path with the smallest audit surface. It also inherits every improvement the user's SSH stack accumulates (new agent, new key algorithm, ProxyJump entries in ~/.ssh/config) without our code caring. Injection risk is bounded because every argv element is validated and no string ever reaches a shell — the `run(cmd)` path passes `cmd` as a single ssh argv, and while ssh joins it into a remote shell string, callers construct that string themselves with awareness of shell metacharacters (heredocs, `&&` chains, etc.). If v2 needs password auth we can revisit; ssh2 remains an option.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Replace ssh-client.ts internals with an ssh2-based implementation; the exported API surface (`test`/`run`/`upload` + SshTarget/SshError) does not change, so remote-provisioner.ts is unaffected."
+  },
+  "links": {
+    "issues": [47],
+    "prs": [],
+    "files": ["src/main/ssh-client.ts", "src/main/remote-provisioner.ts", "specs/src/main/ssh-client-spec.md"]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Sprint 21 in flight. Verification: live provisioning against an Ubuntu VM completes without prompting for a password (BatchMode=yes), and stderr classifications produce clear error kinds for unreachable/auth-failed/host-key-unknown."
+  },
+  "tags": ["ssh", "remote-provisioning", "security", "process-management", "sprint-21", "v6-fleet"]
+}

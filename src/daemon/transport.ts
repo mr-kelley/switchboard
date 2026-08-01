@@ -1,6 +1,8 @@
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { WebSocketServer, WebSocket } from 'ws';
 import { validateToken } from './auth';
 import {
@@ -16,6 +18,26 @@ import {
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 const AUTH_TIMEOUT_MS = 5_000;
+
+// Persist the current pairing code to a well-known file so remote-provisioning
+// clients can retrieve it over SSH without parsing systemd journal output.
+// Written on pair:request, removed on pair:response (success/fail) or timeout.
+function pairingCodeFilePath(): string {
+  const dataDir = process.env.SWITCHBOARD_HOME || path.join(os.homedir(), '.switchboard');
+  return path.join(dataDir, 'pairing-code.txt');
+}
+function writePairingCodeFile(code: string): void {
+  try {
+    const p = pairingCodeFilePath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, code, { mode: 0o600 });
+  } catch (err) {
+    console.error('pairing-code file write failed:', err);
+  }
+}
+function unlinkPairingCodeFile(): void {
+  try { fs.unlinkSync(pairingCodeFilePath()); } catch { /* not present */ }
+}
 
 export interface TransportConfig {
   port: number;
@@ -252,6 +274,7 @@ export class TransportServer {
     // Generate a 6-digit pairing code
     const code = crypto.randomInt(100000, 999999).toString();
     conn.pairingCode = code;
+    writePairingCodeFile(code);
 
     console.log(`\n=== PAIRING REQUEST ===`);
     console.log(`Client "${clientName}" wants to pair.`);
@@ -270,6 +293,7 @@ export class TransportServer {
     setTimeout(() => {
       if (conn.pairingCode) {
         conn.pairingCode = null;
+        unlinkPairingCodeFile();
         this.send(conn.id, { type: 'pair:fail', reason: 'Pairing timed out' });
         conn.ws.close(4002, 'Pairing timeout');
       }
@@ -285,6 +309,7 @@ export class TransportServer {
 
     if (code === conn.pairingCode) {
       conn.pairingCode = null;
+      unlinkPairingCodeFile();
       console.log(`Pairing successful!`);
       // Send the auth token to the client
       this.send(conn.id, {
@@ -305,6 +330,7 @@ export class TransportServer {
       this.onConnect?.(conn);
     } else {
       conn.pairingCode = null;
+      unlinkPairingCodeFile();
       console.log(`Pairing failed — wrong code.`);
       setTimeout(() => {
         this.send(conn.id, { type: 'pair:fail', reason: 'Invalid pairing code' });

@@ -43,6 +43,9 @@
 | Connection Manager | `specs/src/main/connection-manager-spec.md` | active |
 | System Tray | `specs/src/main/tray-spec.md` | active |
 | Desktop Integration | `specs/src/main/desktop-install-spec.md` | active |
+| SSH Client | `specs/src/main/ssh-client-spec.md` | active |
+| Remote Provisioner | `specs/src/main/remote-provisioner-spec.md` | active |
+| Remote Provisioning Modal | `specs/src/renderer/components/RemoteProvisioningModal-spec.md` | active |
 | Shared Types | `specs/src/shared/types-spec.md` | active |
 | Preferences Store | `specs/src/main/preferences-store-spec.md` | active |
 | Theme Presets | `specs/src/shared/themes-spec.md` | active |
