@@ -77,6 +77,10 @@ function buildUnitFile(remoteHome: string, nodePath: string): string {
     '',
     '[Service]',
     'Type=simple',
+    // Bind on all interfaces so the client (on another host) can reach us.
+    // TLS + fingerprint pinning + token auth still gate access; the local-only
+    // daemon spawned by the client still defaults to 127.0.0.1.
+    'Environment=SWITCHBOARD_HOST=0.0.0.0',
     `ExecStart=${nodePath} ${daemonJs}`,
     'Restart=on-failure',
     'RestartSec=5',

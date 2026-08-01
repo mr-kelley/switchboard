@@ -68,6 +68,21 @@ export function getCertFingerprint(certPath: string): string {
   return hash;
 }
 
+/**
+ * Runtime overrides that always win over both saved config and defaults.
+ * `SWITCHBOARD_HOST` lets remote-provisioned daemons bind to 0.0.0.0 without
+ * a config-file edit — the systemd unit our client writes sets it explicitly.
+ */
+function envOverrides(): Partial<DaemonConfig> {
+  const out: Partial<DaemonConfig> = {};
+  if (process.env.SWITCHBOARD_HOST) out.host = process.env.SWITCHBOARD_HOST;
+  if (process.env.SWITCHBOARD_PORT) {
+    const p = parseInt(process.env.SWITCHBOARD_PORT, 10);
+    if (Number.isFinite(p)) out.port = p;
+  }
+  return out;
+}
+
 export function loadConfig(configPath?: string): DaemonConfig {
   const dataDir = getDataDir();
   const cfgPath = configPath || path.join(dataDir, 'daemon.json');
@@ -79,11 +94,12 @@ export function loadConfig(configPath?: string): DaemonConfig {
       ...DEFAULTS,
       sessionPersistPath: path.join(dataDir, 'sessions.json'),
       ...parsed,
+      ...envOverrides(),
     };
   }
 
   // First-run setup
-  return initConfig(dataDir, cfgPath);
+  return { ...initConfig(dataDir, cfgPath), ...envOverrides() };
 }
 
 export function initConfig(dataDir: string, cfgPath: string): DaemonConfig {
