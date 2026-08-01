@@ -670,6 +670,12 @@ export class ConnectionManager {
 
       case 'error':
         console.warn(`Daemon ${conn.config.name} error: [${msg.code}] ${msg.message}`);
+        broadcast('daemon:error', {
+          daemonId: conn.config.id,
+          daemonName: conn.config.name,
+          code: (msg as { code?: string }).code ?? 'ERROR',
+          message: (msg as { message?: string }).message ?? '',
+        });
         break;
     }
   }

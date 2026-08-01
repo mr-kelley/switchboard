@@ -1,4 +1,5 @@
 import * as os from 'os';
+import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { loadConfig, getCertFingerprint } from './config';
 import { PtyManager } from './pty-manager';
@@ -253,6 +254,28 @@ export class Daemon {
   }
 
   private handleSpawn(conn: ClientConnection, name: string, cwd: string, command?: string): void {
+    // Fail loudly and cleanly when cwd doesn't exist on the target — node-pty's
+    // behavior in that case has historically been to emit an unhandled event
+    // that takes the daemon down. Validate first so we return a clear error.
+    try {
+      const st = fs.statSync(cwd);
+      if (!st.isDirectory()) {
+        this.transport.send(conn.id, {
+          type: 'error',
+          code: 'SPAWN_FAILED',
+          message: `cwd is not a directory: ${cwd}`,
+        });
+        return;
+      }
+    } catch (err) {
+      this.transport.send(conn.id, {
+        type: 'error',
+        code: 'SPAWN_FAILED',
+        message: `cwd does not exist on this host: ${cwd}`,
+      });
+      return;
+    }
+
     try {
       const session = this.ptyManager.spawn({ name, cwd, command });
       this.idleDetector.addSession(session.id);
@@ -407,6 +430,16 @@ export class Daemon {
 // --- CLI Entry Point ---
 
 if (require.main === module) {
+  // Safety net: log unhandled errors instead of silently exiting. node-pty
+  // in particular can emit unexpected events for edge-case spawns; without
+  // these handlers the daemon dies without leaving a trace.
+  process.on('uncaughtException', (err) => {
+    console.error('uncaughtException:', err instanceof Error ? err.stack : err);
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('unhandledRejection:', reason instanceof Error ? reason.stack : reason);
+  });
+
   const daemon = new Daemon();
 
   process.on('SIGTERM', async () => {

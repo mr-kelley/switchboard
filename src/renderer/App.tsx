@@ -18,6 +18,7 @@ function AppContent(): React.ReactElement {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchVisible, setSearchVisible] = useState(false);
   const [queueBarSessionId, setQueueBarSessionId] = useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   const activeSession = state.sessions.find((s) => s.id === state.activeSessionId) || null;
 
@@ -82,6 +83,16 @@ function AppContent(): React.ReactElement {
   // Listen for daemon-created sessions (async spawn via daemon).
   // Also hydrate from main's current session list to recover from any
   // session-created broadcasts that fired before this listener attached.
+  // Surface daemon-side errors (e.g., SPAWN_FAILED for a bad cwd) in a
+  // dismissible in-app banner. Native window.alert() from a sandboxed
+  // renderer can wedge the app if IPC arrives during the modal.
+  useEffect(() => {
+    const unsub = (window as any).switchboard.daemon.onError?.((err: { daemonName: string; code: string; message: string }) => {
+      setErrorBanner(`${err.daemonName}: [${err.code}] ${err.message}`);
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     const knownIds = new Set<string>();
     const unsub = window.switchboard.session.onSessionCreated((session: import('../shared/types').SessionInfo) => {
@@ -184,6 +195,30 @@ function AppContent(): React.ReactElement {
     >
       {sidebarVisible && <Sidebar />}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {errorBanner && (
+          <div
+            data-testid="daemon-error-banner"
+            style={{
+              padding: '8px 12px',
+              backgroundColor: uiColors.errorText,
+              color: '#fff',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <span style={{ flex: 1, wordBreak: 'break-word' }}>{errorBanner}</span>
+            <button
+              onClick={() => setErrorBanner(null)}
+              style={{
+                background: 'transparent', border: '1px solid #fff', color: '#fff',
+                padding: '2px 8px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
+              }}
+            >Dismiss</button>
+          </div>
+        )}
         <Header
           activeSessionName={activeSession?.name || null}
           onNewSession={() => setModalOpen(true)}

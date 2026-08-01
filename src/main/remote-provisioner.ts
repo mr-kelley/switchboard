@@ -77,6 +77,10 @@ function buildUnitFile(remoteHome: string, nodePath: string): string {
     '',
     '[Service]',
     'Type=simple',
+    // Bind on all interfaces so the client (on another host) can reach us.
+    // TLS + fingerprint pinning + token auth still gate access; the local-only
+    // daemon spawned by the client still defaults to 127.0.0.1.
+    'Environment=SWITCHBOARD_HOST=0.0.0.0',
     `ExecStart=${nodePath} ${daemonJs}`,
     'Restart=on-failure',
     'RestartSec=5',
@@ -245,8 +249,13 @@ export class RemoteProvisioner {
   }
 
   private async extract(): Promise<void> {
+    // Stop any running instance first so we don't overwrite files under a live
+    // process (node's require cache aside, node-pty's .node file being rewritten
+    // while loaded is asking for trouble). `|| true` because the service may
+    // not yet exist on a first install.
     await ssh.run(
       this.req.target,
+      'systemctl --user stop switchboard-daemon 2>/dev/null || true; ' +
       `mkdir -p ${REMOTE_INSTALL_ROOT} && rm -rf ${REMOTE_INSTALL_ROOT}/switchboard-daemon && ` +
       `tar -xzf ${REMOTE_TARBALL_TMP} -C ${REMOTE_INSTALL_ROOT} && rm -f ${REMOTE_TARBALL_TMP}`,
       { timeoutMs: 30_000 },
@@ -257,16 +266,20 @@ export class RemoteProvisioner {
   private async installService(): Promise<void> {
     if (!this.probed) throw new Error('installService called before probe-target populated remoteHome/nodePath');
     const unit = buildUnitFile(this.probed.remoteHome, this.probed.nodePath);
-    // Write the unit file via `cat` heredoc, then reload + enable --now.
+    // Write the unit file, reload, ensure enabled for auto-start, then
+    // *restart* — not `enable --now`, which is a no-op when the service is
+    // already running and would leave the old process (with old env vars)
+    // in place after a reprovision.
     const marker = 'SB_UNIT_END';
     const script =
       'mkdir -p ~/.config/systemd/user && ' +
       `FILE=${REMOTE_UNIT_PATH} && ` +
       safeHeredoc(marker, unit) +
       'systemctl --user daemon-reload && ' +
-      'systemctl --user enable --now switchboard-daemon';
+      'systemctl --user enable switchboard-daemon && ' +
+      'systemctl --user restart switchboard-daemon';
     await ssh.run(this.req.target, script, { timeoutMs: 30_000 });
-    this.setStep('install-service', { message: 'service enabled and started' });
+    this.setStep('install-service', { message: 'service enabled and restarted' });
   }
 
   private async waitReady(): Promise<void> {
