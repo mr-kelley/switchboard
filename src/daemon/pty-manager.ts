@@ -35,9 +35,23 @@ export class PtyManager {
 
   spawn(config: SessionConfig): SessionInfo {
     const id = config.id ?? randomUUID();
-    const shell = config.command || this.getDefaultShell();
 
-    const ptyProcess = pty.spawn(shell, [], {
+    // If a command is provided, run it via the user's shell (`$SHELL -c "cmd"`)
+    // so multi-word commands like `claude -c` parse into argv correctly.
+    // Without wrapping, node-pty passes the whole string as argv[0] and execvp
+    // fails with ENOENT ("no file named 'claude -c'"). Empty command → spawn
+    // the shell interactively.
+    let execPath: string;
+    let execArgs: string[];
+    if (config.command) {
+      execPath = process.env.SHELL || this.getDefaultShell();
+      execArgs = ['-c', config.command];
+    } else {
+      execPath = this.getDefaultShell();
+      execArgs = [];
+    }
+
+    const ptyProcess = pty.spawn(execPath, execArgs, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -49,7 +63,9 @@ export class PtyManager {
       id,
       name: config.name,
       cwd: config.cwd,
-      command: shell,
+      // Preserve the user's original command string (or the shell path if
+      // none). Restoring a session re-invokes this exact spawn().
+      command: config.command || execPath,
       pid: ptyProcess.pid,
       status: 'working',
     };
