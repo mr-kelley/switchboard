@@ -1,0 +1,75 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000009",
+  "ts": "2026-08-02T12:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "B",
+  "title": "Bundle Node.js runtime in the daemon tarball; drop the Node-on-target assumption",
+  "decision": "The daemon tarball now embeds a Node.js runtime (`bin/node`, pinned to Node 20 LTS via NODE_VERSION in scripts/build-daemon-tarball.sh). The systemd unit our provisioner writes uses this bundled binary in its ExecStart, and the probe step no longer checks for or resolves a target-side Node install. Reverses DEC-000008's `assume Node on target` posture — that was flagged as a v1 tradeoff and hit a real user case (targets on shared hosts where the user cannot install Node system-wide).",
+  "context": {
+    "task_description": "Live-testing a fleet expansion, the user attempted to add a remote daemon on a shared server where they have SSH but no ability to install Node system-wide. The probe rejected the target with `Node 20+ required` and no viable workaround. Bundling Node was DEC-000008's Option D, deferred at v1 for tarball-size reasons.",
+    "assumptions": [
+      "Users want the same install command to work regardless of what the target has pre-installed",
+      "Tarball size of ~35 MB (was 176 KB) is acceptable for a one-time-per-host upload",
+      "Node 20 LTS is a reasonable pin for the lifetime of the daemon binary format; a version bump would coincide with a broader daemon rev"
+    ],
+    "spec_refs": [
+      "specs/src/main/remote-provisioner-spec.md",
+      "scripts/build-daemon-tarball.sh"
+    ]
+  },
+  "scope": {
+    "areas": ["packaging", "distribution", "remote-provisioning", "native-modules"],
+    "paths": [
+      "scripts/build-daemon-tarball.sh",
+      "src/main/remote-provisioner.ts",
+      "specs/src/main/remote-provisioner-spec.md",
+      ".gitignore",
+      "tests/main/remote-provisioner.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Always bundle Node in the tarball (chosen)",
+      "chosen": true,
+      "description": "Simplest predictable execution path. No probe complexity, no dual-mode logic. Guarantees ABI match with the shipped node-pty prebuild. Trade-off: ~35 MB uploads even for hosts that have Node."
+    },
+    {
+      "id": "B",
+      "label": "Dual mode — use system Node when >= 20, else bundled",
+      "chosen": false,
+      "description": "Slightly smaller code path for the common case. Rejected: adds probe branching, and any target on Node 22 would use the wrong-ABI system Node, breaking node-pty. Complexity for no real user benefit."
+    },
+    {
+      "id": "C",
+      "label": "Two tarball variants (with/without Node), pick at upload time",
+      "chosen": false,
+      "description": "Optimizes upload size at the cost of build + selection complexity and a second artifact to maintain. Rejected: not worth the surface area."
+    }
+  ],
+  "rationale": "Bundling always is the shape that makes remote provisioning work on the widest range of targets with the least code. The 35 MB size cost is one-time per host (extract is idempotent; reprovisioning re-uses the on-target install), which is small compared to the user friction of `install Node first, then come back and try again`. Also removes the caveat in DEC-000008 that Node 22 targets need a rebuild variant — bundled Node is always ABI-compatible with our shipped node-pty prebuild.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Delete the Node-fetch section from scripts/build-daemon-tarball.sh; restore the Node probe in remote-provisioner.ts probeTarget; restore the systemd unit's ExecStart to use the probed nodePath. Existing tarballs work either way — the on-target install has a bin/node it just wouldn't use."
+  },
+  "links": {
+    "issues": [47],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "scripts/build-daemon-tarball.sh",
+      "src/main/remote-provisioner.ts",
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: provisioning succeeds against a target host with no Node installed at all; daemon starts under the bundled runtime."
+  },
+  "tags": ["packaging", "daemon", "distribution", "node-runtime", "sprint-21", "v6-fleet"]
+}

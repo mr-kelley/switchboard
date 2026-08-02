@@ -49,14 +49,14 @@ function makeRunner(overrides: Record<string, string | ((args: string[]) => stri
   return calls;
 }
 
-const goodProbe = 'v20.9.0\n/usr/bin/node\n/home/ubuntu\nrunning';
+const goodProbe = '/home/ubuntu\nrunning';
 
 const target = { host: 'server.example.com', user: 'ubuntu', port: 22 };
 
 describe('RemoteProvisioner state machine', () => {
   it('runs all 10 steps in order on the happy path', async () => {
     makeRunner({
-      'node --version': goodProbe,
+      'echo "$HOME"': goodProbe,
       'test -f': 'no',
       // Wait-ready step polls; make is-active succeed on first try
       'is-active switchboard-daemon': 'active',
@@ -88,29 +88,27 @@ describe('RemoteProvisioner state machine', () => {
     expect(cm.submitPairingCode).toHaveBeenCalledWith('123456');
   });
 
-  it('rejects Node < 20', async () => {
-    makeRunner({
-      'node --version': 'v18.19.0\n/usr/bin/node\n/home/ubuntu\nrunning',
-    });
-    const cm = fakeConnectionManager();
-    const p = new RemoteProvisioner({ target, tarballPath: fakeTarball, daemonPort: 3717 }, cm, () => {});
-    await expect(p.run()).rejects.toThrow(/Node 20\+ required/);
-    const st = p.getState().find((s) => s.id === 'probe-target');
-    expect(st?.status).toBe('failed');
-  });
-
   it('rejects when systemctl --user is offline', async () => {
     makeRunner({
-      'node --version': 'v20.9.0\n/usr/bin/node\n/home/ubuntu\noffline',
+      'echo "$HOME"': '/home/ubuntu\noffline',
     });
     const cm = fakeConnectionManager();
     const p = new RemoteProvisioner({ target, tarballPath: fakeTarball, daemonPort: 3717 }, cm, () => {});
     await expect(p.run()).rejects.toThrow(/systemd --user is not active/);
   });
 
+  it('rejects when $HOME is not an absolute path', async () => {
+    makeRunner({
+      'echo "$HOME"': 'not-a-path\nrunning',
+    });
+    const cm = fakeConnectionManager();
+    const p = new RemoteProvisioner({ target, tarballPath: fakeTarball, daemonPort: 3717 }, cm, () => {});
+    await expect(p.run()).rejects.toThrow(/Could not resolve \$HOME/);
+  });
+
   it('can be cancelled mid-run', async () => {
     makeRunner({
-      'node --version': goodProbe,
+      'echo "$HOME"': goodProbe,
     });
     const cm = fakeConnectionManager();
     const p = new RemoteProvisioner({ target, tarballPath: fakeTarball, daemonPort: 3717 }, cm, () => {});
@@ -121,7 +119,7 @@ describe('RemoteProvisioner state machine', () => {
 
   it('retryFrom re-runs from the specified step', async () => {
     makeRunner({
-      'node --version': goodProbe,
+      'echo "$HOME"': goodProbe,
       'test -f': 'no',
       'is-active switchboard-daemon': 'active',
       'journalctl': 'listening on 0.0.0.0:3717',
@@ -142,7 +140,7 @@ describe('RemoteProvisioner state machine', () => {
     // The state machine's wait-ready has a 30s timeout — too long for a fast test. We patch it to fail sooner
     // by mocking is-active to always return "inactive".
     makeRunner({
-      'node --version': goodProbe,
+      'echo "$HOME"': goodProbe,
       'test -f': 'no',
       'is-active switchboard-daemon': 'inactive',
     });

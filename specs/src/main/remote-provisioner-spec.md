@@ -1,6 +1,6 @@
 ---
 title: Remote Provisioner Specification
-version: 0.1.0
+version: 0.2.0
 maintained_by: claude
 domain_tags: [electron, main-process, remote-provisioning, ssh, systemd, pairing]
 status: active
@@ -42,7 +42,7 @@ Orchestrate the end-to-end install of the Switchboard daemon on a target Linux h
 | # | id | Purpose | Remote command |
 |---|----|---------|----------------|
 | 1 | `test-connection` | Verify SSH auth + reachability | `true` |
-| 2 | `probe-target` | Verify Node ≥ 20, resolve `$HOME` and node absolute path, verify systemd --user is active | `set -e; node --version; command -v node; echo "$HOME"; systemctl --user is-system-running \|\| true` |
+| 2 | `probe-target` | Resolve `$HOME` and verify systemd --user is active. (Node is not probed — the tarball bundles its own runtime, see DEC-000009.) | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true` |
 | 3 | `check-existing` | Detect a prior install (informational; does not branch behavior in v1) | `test -f ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js && echo yes \|\| echo no` |
 | 4 | `upload-tarball` | scp the local daemon tarball to `/tmp/switchboard-daemon.tar.gz` | (scp) |
 | 5 | `extract` | Overwrite prior install and extract | `mkdir -p ~/.local/share/switchboard && rm -rf ~/.local/share/switchboard/switchboard-daemon && tar -xzf /tmp/switchboard-daemon.tar.gz -C ~/.local/share/switchboard && rm -f /tmp/switchboard-daemon.tar.gz` |
@@ -61,10 +61,10 @@ Orchestrate the end-to-end install of the Switchboard daemon on a target Linux h
 
 ## Systemd Unit Template
 - `[Unit] Description=Switchboard daemon; After=network.target`
-- `[Service] Type=simple; ExecStart=<remote-node-path> ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js; Restart=on-failure; RestartSec=5`
+- `[Service] Type=simple; Environment=SWITCHBOARD_HOST=0.0.0.0; ExecStart=~/.local/share/switchboard/switchboard-daemon/bin/node ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js; Restart=on-failure; RestartSec=5`
 - `[Install] WantedBy=default.target`
 
-The absolute paths (`remote-node-path`, `remoteHome`) are captured in step 2 and interpolated into the unit content. The heredoc marker `SB_UNIT_END` is single-quoted to disable shell expansion; the writer function refuses to run if the unit content contains the marker on its own line.
+`ExecStart` uses the Node binary bundled inside the tarball (`bin/node`, see DEC-000009) — the target host is not required to have Node installed. `remoteHome` is captured in step 2 and interpolated to form the absolute paths. The heredoc marker `SB_UNIT_END` is single-quoted to disable shell expansion; the writer function refuses to run if the unit content contains the marker on its own line.
 
 ## Pairing Integration
 - Step 9 first invokes `connectionManager.pair(host, 3717, daemonName)`. This opens a WS to the newly-installed daemon and sends `pair:request`, causing the daemon to write `~/.switchboard/pairing-code.txt`.
@@ -74,7 +74,7 @@ The absolute paths (`remote-node-path`, `remoteHome`) are captured in step 2 and
 - On `pair-success`, `ConnectionManager.promotePairingConnection(...)` has already persisted the connection to preferences; the modal closes.
 
 # Edge Cases / Fault Handling
-- **Node < 20 on target:** step 2 throws with a clear message. Step 2 is retriable after the user upgrades Node.
+- **Target has no Node installed:** not an error — the tarball bundles its own runtime.
 - **`systemctl --user` not active** (no user session, no linger): step 2 throws suggesting `loginctl enable-linger $USER` (requires sudo — outside our reach).
 - **Existing install detected:** step 3 records a `message` but does not branch; step 5 always removes and re-extracts.
 - **Daemon fails to bind port 3717 within 30s:** step 7 throws with the last observed service state or journal fragment. Retriable.
@@ -96,11 +96,11 @@ Unit tests in `tests/main/remote-provisioner.test.ts` (Vitest):
 - **State-machine sequencing:** stub `ssh-client` returns success for every call; verify all 10 steps run in order and end `done`.
 - **Cancellation:** cancel during step 4; verify subsequent steps are not executed and the current step's status is not clobbered by an implicit "done".
 - **Retry-from-step:** run through step 6, inject a step-7 failure, call `run('wait-ready')`; verify steps 1-6 are not re-executed and step 7 runs fresh.
-- **Probe validation:** malformed probe output (Node 18, empty $HOME, systemctl offline) each throw with the specific error message.
+- **Probe validation:** malformed probe output (non-absolute $HOME, systemctl offline) each throw with the specific error message.
 - **Heredoc guard:** attempting to build a unit file whose content contains `\nSB_UNIT_END\n` throws before spawning.
 - **Pairing:** stub `ConnectionManager.pair()` + `submitPairingCode()` + `onPairSuccessOnce()`; verify code is polled, submitted, and success awaited.
 
 # Completion Criteria
-- Live-tested end-to-end against a fresh Ubuntu 24.04 VM (Node 20, systemd --user, SSH key auth): the modal reports all 10 steps done in ~60s and the daemon appears in the sidebar as a new group.
+- Live-tested end-to-end against a fresh Ubuntu 24.04 VM (systemd --user, SSH key auth, **Node not installed**): the modal reports all 10 steps done in ~60s and the daemon appears in the sidebar as a new group.
 - Retry-from-step is validated by hand: kill the daemon between steps 7 and 8, retry from `wait-ready`, and complete without re-uploading.
 - No orphaned files on the target after either a successful run or an explicit uninstall path (uninstall path is out of scope for v1).

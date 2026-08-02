@@ -35,3 +35,4 @@ npm-debug.log*
 
 # Issue drafts (local working directory)
 .issues/
+.cache/
