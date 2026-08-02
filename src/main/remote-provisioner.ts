@@ -81,10 +81,12 @@ function buildUnitFile(remoteHome: string): string {
     '',
     '[Service]',
     'Type=simple',
-    // Bind on all interfaces so the client (on another host) can reach us.
-    // TLS + fingerprint pinning + token auth still gate access; the local-only
-    // daemon spawned by the client still defaults to 127.0.0.1.
-    'Environment=SWITCHBOARD_HOST=0.0.0.0',
+    // Bind on all interfaces — dual-stack IPv4+IPv6. On typical Linux with
+    // net.ipv6.bindv6only=0 (the default), binding to `::` accepts both v4
+    // and v6 clients through a single listener. TLS + fingerprint pinning +
+    // token auth gate access; the local-only daemon spawned by the client
+    // still defaults to 127.0.0.1.
+    'Environment=SWITCHBOARD_HOST=::',
     `ExecStart=${nodeBin} ${daemonJs}`,
     'Restart=on-failure',
     'RestartSec=5',

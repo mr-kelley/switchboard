@@ -36,6 +36,16 @@ function broadcast(channel: string, data: unknown): void {
   }
 }
 
+/**
+ * URL-safe host: wraps bare IPv6 literals in brackets so `${host}:${port}` in
+ * a `wss://` URL parses unambiguously. Hostnames and IPv4 pass through
+ * unchanged; already-bracketed IPv6 (e.g., `[::1]`) also passes through.
+ */
+function bracketHost(host: string): string {
+  if (host.startsWith('[')) return host;
+  return host.includes(':') ? `[${host}]` : host;
+}
+
 export interface AttentionSummary {
   total: number;
   perDaemon: Array<{
@@ -128,7 +138,7 @@ export class ConnectionManager {
 
     this.setStatus(conn, 'connecting');
 
-    const ws = new WebSocket(`wss://${conn.config.host}:${conn.config.port}`, {
+    const ws = new WebSocket(`wss://${bracketHost(conn.config.host)}:${conn.config.port}`, {
       rejectUnauthorized: false, // Self-signed certs; validated via fingerprint
     });
 
@@ -399,7 +409,7 @@ export class ConnectionManager {
    */
   async pair(host: string, port: number, clientName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`wss://${host}:${port}`, {
+      const ws = new WebSocket(`wss://${bracketHost(host)}:${port}`, {
         rejectUnauthorized: false,
       });
 

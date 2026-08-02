@@ -221,11 +221,18 @@ export async function upload(
   if (!/^[\w./~\-]+$/.test(remotePath)) {
     throw new SshError('invalid-input', `invalid remotePath: ${JSON.stringify(remotePath)}`);
   }
+  // scp's `user@host:path` needs the host bracketed for IPv6 (colons in the
+  // address would otherwise conflict with the `:path` separator). ssh's plain
+  // `user@host` form doesn't require it, but we bracket for consistency —
+  // ssh accepts either.
+  const scpHost = target.host.includes(':') && !target.host.startsWith('[')
+    ? `[${target.host}]`
+    : target.host;
   const args = [
     ...baseOptions(target),
     '-P', String(target.port),
     localPath,
-    `${target.user}@${target.host}:${remotePath}`,
+    `${target.user}@${scpHost}:${remotePath}`,
   ];
   try {
     await _runner('scp', args, { timeout: opts.timeoutMs ?? 120_000 } as ExecFileOptions);

@@ -104,6 +104,16 @@ describe('ssh-client.upload', () => {
     expect(calls[0].args[calls[0].args.length - 1]).toBe('ubuntu@server.example.com:/tmp/b.tar.gz');
   });
 
+  it('brackets bare IPv6 hosts in the scp destination', async () => {
+    await ssh.upload({ ...target, host: '2001:db8::1' }, '/tmp/a', '/tmp/b');
+    expect(calls[0].args[calls[0].args.length - 1]).toBe('ubuntu@[2001:db8::1]:/tmp/b');
+  });
+
+  it('leaves already-bracketed IPv6 hosts alone', async () => {
+    await ssh.upload({ ...target, host: '[fe80::1]' }, '/tmp/a', '/tmp/b');
+    expect(calls[0].args[calls[0].args.length - 1]).toBe('ubuntu@[fe80::1]:/tmp/b');
+  });
+
   it('rejects paths with shell metacharacters', async () => {
     await expect(ssh.upload(target, '/tmp/a; rm b', '/tmp/x')).rejects.toMatchObject({ kind: 'invalid-input' });
   });
