@@ -66,10 +66,14 @@ const STEP_ORDER: StepId[] = [
 /**
  * Build the systemd user-unit content for the remote daemon. The absolute
  * remote paths are baked in at install time; the target's HOME is resolved
- * once in probeTarget and passed here.
+ * once in probeTarget and passed here. We always use the Node runtime bundled
+ * in the tarball (DEC-000009) so the target host is not required to have
+ * Node installed at all.
  */
-function buildUnitFile(remoteHome: string, nodePath: string): string {
-  const daemonJs = `${remoteHome}/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js`;
+function buildUnitFile(remoteHome: string): string {
+  const installRoot = `${remoteHome}/.local/share/switchboard/switchboard-daemon`;
+  const nodeBin = `${installRoot}/bin/node`;
+  const daemonJs = `${installRoot}/dist/daemon/daemon/daemon.js`;
   return [
     '[Unit]',
     'Description=Switchboard daemon',
@@ -81,7 +85,7 @@ function buildUnitFile(remoteHome: string, nodePath: string): string {
     // TLS + fingerprint pinning + token auth still gate access; the local-only
     // daemon spawned by the client still defaults to 127.0.0.1.
     'Environment=SWITCHBOARD_HOST=0.0.0.0',
-    `ExecStart=${nodePath} ${daemonJs}`,
+    `ExecStart=${nodeBin} ${daemonJs}`,
     'Restart=on-failure',
     'RestartSec=5',
     '',
@@ -110,7 +114,7 @@ function safeHeredoc(marker: string, content: string): string {
 export class RemoteProvisioner {
   private steps: StepState[];
   private cancelled = false;
-  private probed: { remoteHome: string; nodePath: string } | null = null;
+  private probed: { remoteHome: string } | null = null;
 
   constructor(
     private req: ProvisionRequest,
@@ -196,23 +200,18 @@ export class RemoteProvisioner {
   }
 
   private async probeTarget(): Promise<void> {
-    // Get node version, systemd status, HOME, and node absolute path in one round trip.
+    // Node is no longer probed — we ship our own runtime in the tarball
+    // (DEC-000009). We still verify systemd --user is active and resolve
+    // $HOME for the systemd unit's absolute paths.
     const r = await ssh.run(
       this.req.target,
-      'set -e; node --version; command -v node; echo "$HOME"; systemctl --user is-system-running || true',
+      'set -e; echo "$HOME"; systemctl --user is-system-running || true',
       { timeoutMs: 15_000 },
     );
     const lines = r.stdout.trim().split('\n').map((l) => l.trim());
-    if (lines.length < 4) throw new Error(`probe output malformed: ${r.stdout}`);
-    const [nodeVersion, nodePath, remoteHome, systemdStatus] = lines;
+    if (lines.length < 2) throw new Error(`probe output malformed: ${r.stdout}`);
+    const [remoteHome, systemdStatus] = lines;
 
-    const m = /^v(\d+)\./.exec(nodeVersion);
-    if (!m || Number(m[1]) < 20) {
-      throw new Error(`Node 20+ required on target; found ${nodeVersion || 'nothing'}`);
-    }
-    if (!nodePath || !nodePath.startsWith('/')) {
-      throw new Error(`Could not resolve node binary path on target (got: ${JSON.stringify(nodePath)})`);
-    }
     if (!remoteHome.startsWith('/')) {
       throw new Error(`Could not resolve $HOME on target (got: ${JSON.stringify(remoteHome)})`);
     }
@@ -224,8 +223,8 @@ export class RemoteProvisioner {
         `You may need to enable lingering: sudo loginctl enable-linger ${this.req.target.user}`,
       );
     }
-    this.probed = { remoteHome, nodePath };
-    this.setStep('probe-target', { message: `${nodeVersion} at ${nodePath}` });
+    this.probed = { remoteHome };
+    this.setStep('probe-target', { message: `home=${remoteHome}, systemd=${systemdStatus}` });
   }
 
   private async checkExisting(): Promise<void> {
@@ -264,8 +263,8 @@ export class RemoteProvisioner {
   }
 
   private async installService(): Promise<void> {
-    if (!this.probed) throw new Error('installService called before probe-target populated remoteHome/nodePath');
-    const unit = buildUnitFile(this.probed.remoteHome, this.probed.nodePath);
+    if (!this.probed) throw new Error('installService called before probe-target populated remoteHome');
+    const unit = buildUnitFile(this.probed.remoteHome);
     // Write the unit file, reload, ensure enabled for auto-start, then
     // *restart* — not `enable --now`, which is a no-op when the service is
     // already running and would leave the old process (with old env vars)
