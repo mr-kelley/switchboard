@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockPty } = vi.hoisted(() => {
+const { mockPty, spawnSpy } = vi.hoisted(() => {
   const mockPty = {
     pid: 42,
     write: vi.fn(),
@@ -9,11 +9,12 @@ const { mockPty } = vi.hoisted(() => {
     onData: vi.fn(),
     onExit: vi.fn(),
   };
-  return { mockPty };
+  const spawnSpy = vi.fn().mockReturnValue(mockPty);
+  return { mockPty, spawnSpy };
 });
 
 vi.mock('node-pty', () => ({
-  spawn: vi.fn().mockReturnValue(mockPty),
+  spawn: spawnSpy,
 }));
 
 import { PtyManager } from '../../src/daemon/pty-manager';
@@ -119,5 +120,18 @@ describe('PtyManager', () => {
     manager.spawn({ name: 'b', cwd: '/tmp' });
     manager.closeAll();
     expect(manager.getAll()).toHaveLength(0);
+  });
+
+  it('runs a command via login shell so PATH picks up user bin dirs', () => {
+    manager.spawn({ name: 'x', cwd: '/tmp', command: 'claude -c' });
+    expect(spawnSpy).toHaveBeenCalled();
+    const [, args] = spawnSpy.mock.calls[0];
+    expect(args).toEqual(['-l', '-c', 'claude -c']);
+  });
+
+  it('spawns an interactive shell (no -c) when command is empty', () => {
+    manager.spawn({ name: 'x', cwd: '/tmp' });
+    const [, args] = spawnSpy.mock.calls[0];
+    expect(args).toEqual([]);
   });
 });

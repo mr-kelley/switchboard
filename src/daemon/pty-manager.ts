@@ -36,16 +36,18 @@ export class PtyManager {
   spawn(config: SessionConfig): SessionInfo {
     const id = config.id ?? randomUUID();
 
-    // If a command is provided, run it via the user's shell (`$SHELL -c "cmd"`)
-    // so multi-word commands like `claude -c` parse into argv correctly.
-    // Without wrapping, node-pty passes the whole string as argv[0] and execvp
-    // fails with ENOENT ("no file named 'claude -c'"). Empty command → spawn
-    // the shell interactively.
+    // If a command is provided, run it via the user's shell as a LOGIN shell
+    // (`$SHELL -l -c "cmd"`) so multi-word commands parse into argv AND the
+    // user's login PATH is populated. The daemon inherits systemd-user's lean
+    // PATH (no ~/.local/bin, no nvm, no cargo); ~/.bashrc's PATH edits are
+    // skipped by its non-interactive early-return; so only a login shell
+    // sources ~/.profile and picks up things like `claude` at ~/.local/bin.
+    // Empty command → spawn the shell interactively (which sources rc files).
     let execPath: string;
     let execArgs: string[];
     if (config.command) {
       execPath = process.env.SHELL || this.getDefaultShell();
-      execArgs = ['-c', config.command];
+      execArgs = ['-l', '-c', config.command];
     } else {
       execPath = this.getDefaultShell();
       execArgs = [];
