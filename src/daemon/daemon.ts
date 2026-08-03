@@ -16,6 +16,7 @@ export class Daemon {
   private ptyManager: PtyManager;
   private idleDetector: IdleDetector;
   private buffers = new Map<string, OutputBuffer>();
+  private spawnTimes = new Map<string, number>();
   private sessionStore: SessionStore;
   private queuedPrompts: QueuedPrompts;
   private transport: TransportServer;
@@ -74,6 +75,27 @@ export class Daemon {
     });
 
     this.ptyManager.setOnExit((sessionId, exitCode) => {
+      const spawnedAt = this.spawnTimes.get(sessionId);
+      const durationMs = spawnedAt !== undefined ? Date.now() - spawnedAt : -1;
+      this.spawnTimes.delete(sessionId);
+      console.log(`[session:exit] id=${sessionId} code=${exitCode} durationMs=${durationMs}`);
+
+      // Fast-fail: if the session exited within 2s with a non-zero code, the
+      // spawned command almost certainly failed to launch (bad PATH, syntax
+      // error, missing binary). Surface it as an error so the client shows
+      // it in the banner, since the pane vanishes too fast to read.
+      if (exitCode !== 0 && durationMs >= 0 && durationMs < 2000) {
+        const buf = this.buffers.get(sessionId);
+        const tail = buf ? buf.getAll().slice(-2000) : '';
+        this.transport.broadcast({
+          type: 'error',
+          code: 'SESSION_EXITED_QUICKLY',
+          message: tail
+            ? `Session exited in ${durationMs}ms with code ${exitCode}: ${tail.trim()}`
+            : `Session exited in ${durationMs}ms with code ${exitCode} (no output captured).`,
+        });
+      }
+
       this.idleDetector.removeSession(sessionId);
       this.queuedPrompts.removeSession(sessionId);
       this.transport.broadcast({
@@ -276,8 +298,10 @@ export class Daemon {
       return;
     }
 
+    console.log(`[session:spawn] name=${JSON.stringify(name)} cwd=${cwd} command=${command ? JSON.stringify(command) : '(default shell)'}`);
     try {
       const session = this.ptyManager.spawn({ name, cwd, command });
+      this.spawnTimes.set(session.id, Date.now());
       this.idleDetector.addSession(session.id);
 
       // Create output buffer

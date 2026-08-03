@@ -169,8 +169,9 @@ export class ConnectionManager {
       }
     });
 
-    ws.on('error', () => {
-      // Error is followed by close event
+    ws.on('error', (err) => {
+      console.error(`[conn] ${conn.config.name} WS error:`, err.message);
+      // Close event follows and handles state transition.
     });
   }
 
@@ -321,7 +322,20 @@ export class ConnectionManager {
    */
   spawn(daemonId: string, name: string, cwd: string, command?: string): void {
     const conn = this.connections.get(daemonId);
-    if (!conn || conn.status !== 'connected') throw new Error('Daemon not connected');
+    if (!conn) {
+      const known = Array.from(this.connections.keys());
+      console.error(`[spawn] no connection for daemonId=${JSON.stringify(daemonId)}. Known: ${JSON.stringify(known)}`);
+      throw new Error(`Daemon not connected: unknown daemonId ${daemonId} (known: ${known.join(', ') || 'none'})`);
+    }
+    if (conn.status !== 'connected') {
+      console.error(`[spawn] daemon ${conn.config.name} status=${conn.status} wsReadyState=${conn.ws?.readyState}`);
+      throw new Error(`Daemon not connected: ${conn.config.name} is ${conn.status}`);
+    }
+    if (!conn.ws || conn.ws.readyState !== 1 /* OPEN */) {
+      console.error(`[spawn] daemon ${conn.config.name} status='connected' but ws is ${conn.ws?.readyState}`);
+      throw new Error(`Daemon not connected: ${conn.config.name} socket dropped`);
+    }
+    console.log(`[spawn] → ${conn.config.name}: name=${JSON.stringify(name)} cwd=${cwd} command=${command ? JSON.stringify(command) : '(default shell)'}`);
     this.sendToDaemon(conn, { type: 'session:spawn', name, cwd, command });
   }
 
@@ -699,6 +713,9 @@ export class ConnectionManager {
   }
 
   private setStatus(conn: ManagedConnection, status: ConnectionStatus): void {
+    if (conn.status !== status) {
+      console.log(`[conn] ${conn.config.name} (${conn.config.id}): ${conn.status} → ${status}`);
+    }
     conn.status = status;
     broadcast('daemon:status-changed', {
       daemonId: conn.config.id,
