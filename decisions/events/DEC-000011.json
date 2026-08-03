@@ -1,0 +1,81 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000011",
+  "ts": "2026-08-03T18:05:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "A",
+  "title": "Define the daemon inject API contract: `inject:request` / `inject:response` addressed by cwd, reject-if-busy, mTLS-authorized, LRU-deduped",
+  "decision": "The daemon exposes a new WebSocket message pair `inject:request` and `inject:response` on the existing (post-DEC-000010) mTLS transport. Requests address the target session by its absolute `cwd` (Bosun's role→cwd mapping stays Bosun-side; the daemon has no roles). Responses are synchronous and deterministic: `accepted` when the context was written to the target session's PTY, or `rejected` with one of `busy` / `auth` / `unknown_role`. `not_ready` is collapsed into `unknown_role` in v1 pending a real spawning/unhealthy state in the daemon. Delivery is verbatim (no framing, no trailing newline — the caller composes what the session needs). Authorization gates the handler on the client cert's SAN FQDN appearing in the operator's `injectAllowedClients` config list. Idempotency uses an in-memory LRU keyed on caller-supplied `inject_id` (cap 10k entries, 1 h TTL); the cache does not survive a daemon restart in v1. Governed by `specs/src/daemon/inject-api-spec.md`.",
+  "context": {
+    "task_description": "lab-git-manager's Bosun's Mate needs to programmatically inject context into a role's live daemon session and receive a deterministic accept/reject synchronously (terminal outcome arrives out-of-band as a ticket update — not the daemon's concern). The daemon has all the primitives already: sessions indexed by id, cwd tracked per session, IdleDetector maintains a working/idle/needs-attention status, PtyManager.write does raw PTY bytes. This decision pins the message contract that composes those primitives into an external-facing input surface.",
+    "assumptions": [
+      "Bosun's Mate honors a strict 1:1 root-directory-to-role mapping; multiple sessions sharing a cwd is a caller bug and the daemon fails closed (reason='unknown_role').",
+      "DEC-000010 (mTLS) has landed before this — client identity is available at message-dispatch time.",
+      "PTY writes are kernel-serialized; there is no interleave hazard between concurrent injects into the same session.",
+      "1 MB is a reasonable v1 payload cap; larger payloads suggest a design smell on the caller side."
+    ],
+    "spec_refs": [
+      "switchboard-daemon-input.plan.md",
+      "switchboard-daemon-input.handoff.md",
+      "specs/src/daemon/inject-api-spec.md",
+      "specs/src/daemon/pty-manager-spec.md",
+      "specs/src/daemon/idle-detector-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["transport", "protocol", "authorization", "session-input"],
+    "paths": [
+      "src/shared/protocol.ts",
+      "src/daemon/daemon.ts",
+      "src/daemon/transport.ts",
+      "src/daemon/inject-dedupe.ts",
+      "src/daemon/config.ts",
+      "specs/src/daemon/inject-api-spec.md",
+      "tests/daemon/inject-api.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Reject-if-busy, cwd-addressed, LRU dedupe, verbatim delivery (chosen)",
+      "chosen": true,
+      "description": "The handoff's preferred shape (§C reject-if-busy, §F verbatim). Daemon stays a dumb, authenticated pipe for bytes into a PTY. Bosun's Mate handles retry-on-busy in its poll loop. Simplest and matches the caller's stated deterministic-orchestrator invariant."
+    },
+    {
+      "id": "B",
+      "label": "Queue-on-busy via the existing `queuedPrompts` machinery",
+      "chosen": false,
+      "description": "Reuse the queued-prompt path so injects while a session is `working` deliver on next `needs-attention`. Rejected: introduces silent stacking (two injects while busy → both fire eventually), and the caller has to know the queue depth to reason about ordering. `queuedPrompts` is the right shape for interactive UX, wrong shape for deterministic orchestration."
+    },
+    {
+      "id": "C",
+      "label": "Address by session id (composite `daemonId:sessionId`) instead of cwd",
+      "chosen": false,
+      "description": "Simpler daemon-side lookup — direct map hit. Rejected: session ids are generated per-spawn and don't survive across a restart/reprovision the way `cwd` does. Bosun's Mate would need a discovery step to resolve role → session id every poll; addressing by cwd removes that."
+    }
+  ],
+  "rationale": "Option A minimizes what the daemon knows about Bosun's world (nothing — it just addresses PTYs by cwd), keeps synchronous determinism honest (a single accept/reject with no hidden queuing), and reuses existing primitives (IdleDetector, PtyManager, cert-derived identity from DEC-000010) rather than adding parallel machinery. The rejected options each trade caller determinism for daemon convenience; the handoff is explicit that determinism is the load-bearing property.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Remove the inject:request / inject:response handling from daemon.ts + transport.ts and delete inject-dedupe.ts. No persisted state to migrate away from. Callers get `UNKNOWN_MESSAGE` on the retired message type."
+  },
+  "links": {
+    "issues": [],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "specs/src/daemon/inject-api-spec.md",
+      "switchboard-daemon-input.plan.md",
+      "switchboard-daemon-input.handoff.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: fixture Bosun-Mate client cert + fixture session at a known cwd; each accept/reject branch reproducible in tests; idempotent redelivery of the same inject_id produces one PTY write; unauthorized client cert (SAN not in allowlist) reliably rejected."
+  },
+  "tags": ["protocol", "inject", "bosun-integration", "sprint-23", "authorization", "idempotency"]
+}

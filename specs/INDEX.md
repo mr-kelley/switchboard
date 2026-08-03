@@ -15,6 +15,8 @@
 | Daemon Idle Detector | `specs/src/daemon/idle-detector-spec.md` | draft |
 | Daemon Output Buffer | `specs/src/daemon/output-buffer-spec.md` | draft |
 | Daemon Session Store | `specs/src/daemon/session-store-spec.md` | draft |
+| Daemon Transport (Lab-CA mTLS) | `specs/src/daemon/transport-mtls-spec.md` | draft |
+| Daemon Inject API | `specs/src/daemon/inject-api-spec.md` | draft |
 
 ## Implementation Specs — Shared
 

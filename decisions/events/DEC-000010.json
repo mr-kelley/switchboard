@@ -1,0 +1,84 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000010",
+  "ts": "2026-08-03T18:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "A",
+  "title": "Retire pairing + bearer token + fingerprint pin; adopt lab-CA mTLS as the sole daemon transport auth",
+  "decision": "The daemon transport authenticates clients via mutual TLS keyed off the operator's lab Root CA. Both sides present certs; both sides validate against the lab CA root. Client identity is the FQDN in the client cert's subjectAltName. Bearer tokens, 6-digit pairing codes, and SHA-256 fingerprint pinning are removed entirely — no `SWITCHBOARD_INSECURE=1` fallback, no dev-mode shortcut, no `rejectUnauthorized: false`. Cert distribution is operator-provisioned out-of-band to well-known paths under `~/.switchboard/tls/`. Prerequisite for DEC-000011 (inject API for Bosun's Mate). Governed by `specs/src/daemon/transport-mtls-spec.md`.",
+  "context": {
+    "task_description": "lab-git-manager (Bosun's Mate builder) submitted a formal handoff (switchboard-daemon-input.handoff.md) requesting a machine input contract for injecting work into a role's live daemon session. §5 of that handoff makes mTLS keyed off the operator's forge Root CA a normative requirement, and requires per-client identity so the daemon can authorize the inject channel only to specific client identities. Current pairing/token/pin auth cannot satisfy this: pairing gives every client a bearer token and offers no way to identify the client at the transport layer. Separately, the operator's wider lab has been converging on lab-CA-issued mTLS for internal services; Switchboard was the outlier.",
+    "assumptions": [
+      "Operator provisions server + client certs out-of-band from the lab CA; enrollment mechanism is out of scope for the daemon.",
+      "All connections are by FQDN; the lab CA issues client certs with FQDN in subjectAltName, not CN.",
+      "Pre-1.0 hard cutover is acceptable — existing paired daemons/clients are torn down and reprovisioned. No graceful migration.",
+      "Developer machines have their own lab-issued cert pair; no separate dev-mode auth path is needed."
+    ],
+    "spec_refs": [
+      "switchboard-daemon-input.plan.md",
+      "switchboard-daemon-input.handoff.md",
+      "specs/src/daemon/transport-mtls-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["transport", "auth", "pki", "provisioning"],
+    "paths": [
+      "src/daemon/transport.ts",
+      "src/daemon/config.ts",
+      "src/daemon/daemon.ts",
+      "src/main/connection-manager.ts",
+      "src/main/remote-provisioner.ts",
+      "src/main/local-daemon.ts",
+      "src/main/preload.ts",
+      "src/renderer/components/PreferencesModal.tsx",
+      "src/renderer/components/RemoteProvisioningModal.tsx",
+      "specs/src/daemon/transport-mtls-spec.md",
+      "tests/daemon/transport.test.ts",
+      "tests/daemon/auth.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Lab-CA mTLS, hard cutover, no fallback (chosen)",
+      "chosen": true,
+      "description": "Server + client certs signed by the operator's lab CA. Both sides validate against the CA. Client identity from SAN FQDN. All legacy auth (pair codes, tokens, fingerprint pin, insecure fallback) removed in the same commit series. Cleanest end state; matches the wider lab's convergent pattern. Cost: pre-1.0 users must reprovision; developer machines need a cert."
+    },
+    {
+      "id": "B",
+      "label": "Lab-CA mTLS with `SWITCHBOARD_INSECURE=1` fallback preserving legacy path",
+      "chosen": false,
+      "description": "Keep the pairing + token + fingerprint pin code around, gated on an explicit insecure flag, for developers without lab certs. Rejected: the only current developer is the operator, who has lab certs. Legacy code paths carry indefinitely; the whole point of the migration is to remove them. Not worth the maintenance surface."
+    },
+    {
+      "id": "C",
+      "label": "Dual-stack auth (mTLS or legacy token) for one rc, then remove legacy in a follow-up",
+      "chosen": false,
+      "description": "Common migration pattern for shared systems. Rejected here because there are no external users to protect during transition — a single operator can tear down and rebuild in a day. Complexity without benefit."
+    }
+  ],
+  "rationale": "Option A is the shape that lands closest to the operator's target end state with the least code to carry through. The wider lab is already on lab-CA mTLS for other internal services; introducing a switchboard-specific dev-mode fallback would perpetuate an outlier pattern the operator is deliberately retiring. Bosun's Mate's normative security requirement (§5 of the handoff) demands per-client identity that only cert-based auth provides; adding it alongside the legacy path doubles the auth code and gives us two ways things can go wrong. Since we're pre-1.0 with one operator, the hard-cutover cost is measured in one afternoon of reprovisioning, not a migration project.",
+  "risk": {
+    "level": "medium",
+    "reversibility": "medium",
+    "rollback": "Revert the removal of pairing/token/pin code (available in git history) and re-enable the pre-mTLS transport initialization in `transport.ts:start()` and `connection-manager.ts:connect()`. Persisted daemon connections would need to re-pair. Would leave the daemon without the mTLS foundation Bosun's Mate integration depends on."
+  },
+  "links": {
+    "issues": [],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "specs/src/daemon/transport-mtls-spec.md",
+      "switchboard-daemon-input.plan.md",
+      "switchboard-daemon-input.handoff.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: fresh daemon + fresh client with lab-issued certs completes a session:spawn end-to-end; a client presenting no cert or an expired/wrong-CA cert is refused at TLS handshake with a distinct alert."
+  },
+  "tags": ["auth", "pki", "mtls", "transport", "sprint-22", "lab-ca", "bosun-integration"]
+}
