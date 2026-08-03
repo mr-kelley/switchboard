@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import { randomUUID } from 'crypto';
-import { loadConfig, getCertFingerprint } from './config';
+import { loadConfig } from './config';
 import { PtyManager } from './pty-manager';
 import { IdleDetector } from './idle-detector';
 import { OutputBuffer } from './output-buffer';
@@ -114,19 +114,21 @@ export class Daemon {
       this.persistSessions();
     });
 
-    // Transport server
+    // Transport server (mTLS — server presents lab-CA-signed cert, requires
+    // client cert also signed by the lab CA, extracts SAN FQDN as identity).
     const daemonId = randomUUID();
-    const fingerprint = getCertFingerprint(this.config.tls.cert);
     this.transport = new TransportServer(
       {
         port: this.config.port,
         host: this.config.host,
-        tls: this.config.tls,
-        token: this.config.auth.token,
+        tls: {
+          cert: this.config.tls.cert,
+          key: this.config.tls.key,
+          ca: this.config.tls.ca,
+        },
         daemonId,
         hostname: os.hostname(),
         version: VERSION,
-        fingerprint,
       },
       (conn, msg) => this.handleMessage(conn, msg)
     );
@@ -149,9 +151,9 @@ export class Daemon {
       }
     }, 60_000);
 
-    const fingerprint = getCertFingerprint(this.config.tls.cert);
     console.log(`Switchboard daemon listening on ${this.config.host}:${this.config.port}`);
-    console.log(`Connection string: switchboard://${this.config.host}:${this.config.port}?token=${this.config.auth.token}&fingerprint=${fingerprint}`);
+    console.log(`TLS cert dir: ${this.config.tls.dir}`);
+    console.log(`inject-authorized clients: ${this.config.injectAllowedClients.length === 0 ? '(none)' : this.config.injectAllowedClients.join(', ')}`);
     console.log(`Daemon ready.`);
   }
 

@@ -62,8 +62,6 @@ vi.mock('../../src/main/local-daemon', () => ({
       name: 'Localhost',
       host: '127.0.0.1',
       port: 3717,
-      token: 'test',
-      fingerprint: 'test',
       autoConnect: true,
     }),
     stop: vi.fn(),

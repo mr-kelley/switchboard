@@ -2,17 +2,24 @@ import { spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as crypto from 'crypto';
 import { app } from 'electron';
 import type { DaemonConnectionConfig } from '../shared/types';
 import * as systemd from './systemd-installer';
 
 export const LOCALHOST_DAEMON_ID = 'localhost';
 
+/**
+ * Manages the local (per-machine) daemon child process. Under mTLS the local
+ * daemon reads its cert bundle from `~/.switchboard/tls/` just like any other
+ * daemon — there is no dev-mode shortcut. If the certs are missing, the
+ * daemon exits with a specific error which we surface through the local-
+ * daemon status UI.
+ */
 export class LocalDaemon {
   private process: ChildProcess | null = null;
   private stderrBuffer = '';
   private serviceManaged = false;
+  private lastPort = 3717;
 
   async start(): Promise<DaemonConnectionConfig> {
     // If a systemd user service is installed and running, defer to it instead
@@ -21,14 +28,13 @@ export class LocalDaemon {
       const running = await systemd.isRunning();
       if (running) {
         this.serviceManaged = true;
-        const config = this.readDaemonConfig();
+        const port = this.readDaemonConfigPort();
+        this.lastPort = port;
         return {
           id: LOCALHOST_DAEMON_ID,
           name: 'Localhost',
           host: '127.0.0.1',
-          port: config.port,
-          token: config.auth.token,
-          fingerprint: config.fingerprint,
+          port,
           autoConnect: true,
         };
       }
@@ -59,14 +65,13 @@ export class LocalDaemon {
 
     await this.waitForReady();
 
-    const config = this.readDaemonConfig();
+    const port = this.readDaemonConfigPort();
+    this.lastPort = port;
     return {
       id: LOCALHOST_DAEMON_ID,
       name: 'Localhost',
       host: '127.0.0.1',
-      port: config.port,
-      token: config.auth.token,
-      fingerprint: config.fingerprint,
+      port,
       autoConnect: true,
     };
   }
@@ -149,23 +154,32 @@ export class LocalDaemon {
       this.process.once('exit', (code) => {
         clearTimeout(timeout);
         const tail = this.stderrBuffer.trim();
+        // The daemon exits with a CertLoadError when TLS files are missing at
+        // startup. Surface a targeted hint on top of the raw error so the
+        // status UI can present something actionable.
+        const isCertProblem = tail.includes('required TLS file not found') ||
+          tail.includes('not a PEM file');
+        const hint = isCertProblem
+          ? ` — populate ${path.join(os.homedir(), '.switchboard', 'tls')} with server.crt, server.key, and ca.crt from your lab CA.`
+          : '';
         const detail = tail ? `: ${tail}` : '';
-        reject(new Error(`Daemon exited with code ${code}${detail}`));
+        reject(new Error(`Daemon exited with code ${code}${detail}${hint}`));
       });
     });
   }
 
-  private readDaemonConfig(): { port: number; auth: { token: string }; fingerprint: string } {
+  private readDaemonConfigPort(): number {
     const dataDir = process.env.SWITCHBOARD_HOME || path.join(os.homedir(), '.switchboard');
     const configPath = path.join(dataDir, 'daemon.json');
-    const raw = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(raw);
-    const certPem = fs.readFileSync(config.tls.cert, 'utf-8');
-    const fingerprint = crypto.createHash('sha256').update(certPem).digest('hex');
-    return {
-      port: config.port,
-      auth: { token: config.auth.token },
-      fingerprint,
-    };
+    // The daemon writes its config on first run; if absent, we fall back to
+    // the daemon default (3717). Under mTLS there are no cert paths or tokens
+    // to read here — those live in ~/.switchboard/tls/ per the transport spec.
+    if (!fs.existsSync(configPath)) return 3717;
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { port?: number };
+      return config.port ?? 3717;
+    } catch {
+      return 3717;
+    }
   }
 }

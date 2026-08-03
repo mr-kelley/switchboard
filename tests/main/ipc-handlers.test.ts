@@ -50,8 +50,7 @@ describe('IPC Handlers', () => {
       resize: vi.fn(),
       close: vi.fn(),
       rename: vi.fn(),
-      pair: vi.fn(),
-      submitPairingCode: vi.fn(),
+      addAndConnect: vi.fn(),
     };
     registerIpcHandlers(mockConnectionManager);
   });
@@ -168,9 +167,8 @@ describe('IPC Handlers', () => {
       expect(handlers.has('daemon:remove')).toBe(true);
     });
 
-    it('registers pairing handlers', () => {
-      expect(handlers.has('daemon:pair')).toBe(true);
-      expect(handlers.has('daemon:submit-code')).toBe(true);
+    it('registers the mTLS add-and-connect handler', () => {
+      expect(handlers.has('daemon:add-and-connect')).toBe(true);
     });
   });
 });

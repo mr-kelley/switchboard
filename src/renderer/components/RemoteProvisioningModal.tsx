@@ -28,6 +28,9 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
   const [port, setPort] = useState('22');
   const [identityFile, setIdentityFile] = useState('');
   const [daemonName, setDaemonName] = useState('');
+  const [serverCertPath, setServerCertPath] = useState('');
+  const [serverKeyPath, setServerKeyPath] = useState('');
+  const [caCertPath, setCaCertPath] = useState('');
   const [error, setError] = useState('');
   const [steps, setSteps] = useState<RemoteProvisionStepState[]>([]);
 
@@ -66,6 +69,11 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
           },
           daemonName: daemonName.trim() || undefined,
           daemonPort: 3717,
+          certs: {
+            serverCertPath: serverCertPath.trim(),
+            serverKeyPath: serverKeyPath.trim(),
+            caCertPath: caCertPath.trim(),
+          },
         });
       }
       setPhase('success');
@@ -79,6 +87,10 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
     e.preventDefault();
     if (!host.trim() || !user.trim()) {
       setError('Host and user are required');
+      return;
+    }
+    if (!serverCertPath.trim() || !serverKeyPath.trim() || !caCertPath.trim()) {
+      setError('Server cert, server key, and CA cert paths are all required (lab-CA-issued for this target).');
       return;
     }
     void startProvision();
@@ -132,7 +144,7 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 600, color: uiColors.modalText, marginBottom: 20 }}>
-          Add remote daemon
+          Provision remote daemon
         </h2>
 
         {phase === 'form' && (
@@ -174,6 +186,31 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
                 placeholder="shown in sidebar; defaults to hostname"
                 style={inputStyle} />
             </div>
+
+            <div style={{ borderTop: `1px solid ${uiColors.inputBorder}`, paddingTop: 14, marginTop: 4, marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: uiColors.appTextMuted, marginBottom: 10, lineHeight: 1.5 }}>
+                Lab-CA-issued TLS bundle for the target. Cert must carry the target's FQDN in SAN.
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={labelStyle}>Server cert path</label>
+                <input data-testid="input-server-cert" value={serverCertPath}
+                  onChange={(e) => setServerCertPath(e.target.value)}
+                  placeholder="/path/to/server.crt" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={labelStyle}>Server key path</label>
+                <input data-testid="input-server-key" value={serverKeyPath}
+                  onChange={(e) => setServerKeyPath(e.target.value)}
+                  placeholder="/path/to/server.key" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>CA cert path</label>
+                <input data-testid="input-ca-cert" value={caCertPath}
+                  onChange={(e) => setCaCertPath(e.target.value)}
+                  placeholder="/path/to/ca.crt" style={inputStyle} />
+              </div>
+            </div>
+
             {error && (
               <div data-testid="modal-error" style={{ color: uiColors.errorText, fontSize: 12, marginBottom: 12 }}>
                 {error}
@@ -181,10 +218,10 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button type="button" onClick={onClose} style={btn}>Cancel</button>
-              <button type="submit" data-testid="submit-provision" style={primaryBtn}>Install & pair</button>
+              <button type="submit" data-testid="submit-provision" style={primaryBtn}>Install</button>
             </div>
             <div style={{ fontSize: 11, color: uiColors.appTextMuted, marginTop: 14, lineHeight: 1.5 }}>
-              Requires: Node 20+ on the target, a running <code>systemd --user</code> session, and SSH access via your local agent or the specified key. The target must have port 3717 available.
+              Requires: SSH access, <code>systemd --user</code> on the target, and the three PEM files above (the daemon runtime is bundled in the tarball).
             </div>
           </form>
         )}
@@ -247,7 +284,7 @@ export default function RemoteProvisioningModal({ isOpen, onClose }: Props): Rea
             {phase === 'success' && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <div style={{ flex: 1, fontSize: 13, color: uiColors.buttonPrimaryBg, alignSelf: 'center' }}>
-                  Daemon installed and paired. It will appear in the sidebar shortly.
+                  Daemon installed. It will appear in the sidebar once the mTLS handshake completes.
                 </div>
                 <button data-testid="done-button" onClick={onClose} style={primaryBtn}>Done</button>
               </div>

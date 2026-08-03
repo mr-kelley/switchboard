@@ -132,12 +132,8 @@ export function registerIpcHandlers(
     connectionManager.removeConnection(daemonId);
   });
 
-  ipcMain.handle('daemon:pair', (_event, args: { host: string; port: number; clientName: string }) => {
-    return connectionManager.pair(args.host, args.port, args.clientName);
-  });
-
-  ipcMain.handle('daemon:submit-code', (_event, code: string) => {
-    connectionManager.submitPairingCode(code);
+  ipcMain.handle('daemon:add-and-connect', (_event, args: { host: string; port: number; name: string }) => {
+    return connectionManager.addAndConnect(args.host, args.port, args.name);
   });
 
   ipcMain.handle('daemon:statuses', () => {

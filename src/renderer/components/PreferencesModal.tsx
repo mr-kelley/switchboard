@@ -4,22 +4,6 @@ import { THEME_PRESETS } from '../../shared/themes';
 import { DEFAULT_SHORTCUTS } from '../hooks/useKeyboardShortcuts';
 import RemoteProvisioningModal from './RemoteProvisioningModal';
 
-function parseConnectionString(connStr: string): { host: string; port: number; token: string; fingerprint: string } | null {
-  try {
-    // switchboard://host:port?token=xxx&fingerprint=yyy
-    const cleaned = connStr.trim().replace('switchboard://', 'https://');
-    const url = new URL(cleaned);
-    const host = url.hostname;
-    const port = parseInt(url.port, 10);
-    const token = url.searchParams.get('token') || '';
-    const fingerprint = url.searchParams.get('fingerprint') || '';
-    if (!host || !port || !token) return null;
-    return { host, port, token, fingerprint };
-  } catch {
-    return null;
-  }
-}
-
 interface DaemonStatus {
   id: string;
   name: string;
@@ -251,8 +235,6 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
 }): React.ReactElement {
   const [host, setHost] = useState('');
   const [port, setPort] = useState('3717');
-  const [pairingCode, setPairingCode] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'waiting' | 'code'>('idle');
   const [error, setError] = useState('');
   const [statuses, setStatuses] = useState<DaemonStatus[]>([]);
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
@@ -272,26 +254,7 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
     return () => clearInterval(interval);
   }, [refreshStatuses]);
 
-  useEffect(() => {
-    const unsubChallenge = window.switchboard.daemon.onPairChallenge(() => {
-      setPhase('code');
-    });
-    const unsubSuccess = window.switchboard.daemon.onPairSuccess(() => {
-      setPhase('idle');
-      setHost('');
-      setPort('3717');
-      setPairingCode('');
-      setError('');
-      refreshStatuses();
-    });
-    const unsubFailed = window.switchboard.daemon.onPairFailed((reason: string) => {
-      setPhase('idle');
-      setError(`Pairing failed: ${reason}`);
-    });
-    return () => { unsubChallenge(); unsubSuccess(); unsubFailed(); };
-  }, [refreshStatuses]);
-
-  const handlePair = async () => {
+  const handleAdd = async () => {
     setError('');
     if (!host.trim()) {
       setError('Host is required');
@@ -302,22 +265,14 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
       setError('Invalid port');
       return;
     }
-    setPhase('waiting');
     try {
-      await window.switchboard.daemon.pair(host.trim(), portNum, 'Switchboard Client');
+      await window.switchboard.daemon.addAndConnect(host.trim(), portNum, host.trim());
+      setHost('');
+      setPort('3717');
+      refreshStatuses();
     } catch (err) {
-      setPhase('idle');
       setError(err instanceof Error ? err.message : 'Failed to connect');
     }
-  };
-
-  const handleSubmitCode = () => {
-    if (!pairingCode.trim()) {
-      setError('Enter the 6-digit code from the daemon console');
-      return;
-    }
-    window.switchboard.daemon.submitCode(pairingCode.trim());
-    setPairingCode('');
   };
 
   const handleDisconnect = async (daemonId: string) => {
@@ -385,93 +340,56 @@ function DaemonSection({ uiColors, inputStyle, labelStyle }: {
         </div>
       )}
 
-      {phase === 'idle' && (
-        <>
-          <label style={labelStyle}>Add Daemon</label>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <div style={{ flex: 1 }}>
-              <input
-                type="text"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="hostname or IP"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ width: 80 }}>
-              <input
-                type="text"
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                placeholder="3717"
-                style={inputStyle}
-              />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={handlePair}
-              style={{
-                padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
-                color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Pair
-            </button>
-            {window.switchboard.platform === 'linux' && (
-              <button
-                data-testid="add-remote-daemon"
-                onClick={() => setRemoteModalOpen(true)}
-                style={{
-                  padding: '6px 14px', backgroundColor: 'transparent',
-                  color: uiColors.appText, border: `1px solid ${uiColors.inputBorder}`,
-                  borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                Add remote daemon…
-              </button>
-            )}
-          </div>
-        </>
-      )}
-
-      {phase === 'waiting' && (
-        <div style={{ fontSize: 13, color: uiColors.appTextMuted }}>
-          Connecting to {host}:{port}...
+      <label style={labelStyle}>Add Daemon</label>
+      <div style={{ fontSize: 11, color: uiColors.appTextMuted, marginBottom: 8 }}>
+        Client and daemon must both hold lab-CA-issued certs at ~/.switchboard/tls/.
+        Connection succeeds when both sides validate.
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="hostname (FQDN) or IP"
+            style={inputStyle}
+          />
         </div>
-      )}
-
-      {phase === 'code' && (
-        <>
-          <label style={labelStyle}>Pairing Code</label>
-          <div style={{ fontSize: 12, color: uiColors.appTextMuted, marginBottom: 8 }}>
-            A 6-digit code is displayed on the daemon's console. Enter it below.
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <input
-              type="text"
-              value={pairingCode}
-              onChange={(e) => setPairingCode(e.target.value)}
-              placeholder="123456"
-              maxLength={6}
-              autoFocus
-              style={{ ...inputStyle, width: 120, fontFamily: 'monospace', fontSize: 18, textAlign: 'center', letterSpacing: '0.2em' }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitCode(); }}
-            />
-            <button
-              onClick={handleSubmitCode}
-              style={{
-                padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
-                color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Submit
-            </button>
-          </div>
-        </>
-      )}
+        <div style={{ width: 80 }}>
+          <input
+            type="text"
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            placeholder="3717"
+            style={inputStyle}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleAdd}
+          style={{
+            padding: '6px 14px', backgroundColor: uiColors.buttonPrimaryBg,
+            color: uiColors.buttonPrimaryText, border: 'none', borderRadius: 4,
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Connect
+        </button>
+        {window.switchboard.platform === 'linux' && (
+          <button
+            data-testid="add-remote-daemon"
+            onClick={() => setRemoteModalOpen(true)}
+            style={{
+              padding: '6px 14px', backgroundColor: 'transparent',
+              color: uiColors.appText, border: `1px solid ${uiColors.inputBorder}`,
+              borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Provision remote daemon…
+          </button>
+        )}
+      </div>
 
       {error && (
         <div style={{ color: uiColors.errorText, fontSize: 12, marginTop: 8 }}>{error}</div>

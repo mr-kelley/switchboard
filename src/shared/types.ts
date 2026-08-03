@@ -98,8 +98,6 @@ export interface DaemonConnectionConfig {
   name: string;
   host: string;
   port: number;
-  token: string;
-  fingerprint: string;
   autoConnect: boolean;
 }
 
@@ -154,18 +152,20 @@ export interface SwitchboardAPI {
     onQueueSync(callback: (queuedPrompts: Record<string, string>) => void): () => void;
   };
   daemon: {
-    add(config: { id: string; name: string; host: string; port: number; token: string; fingerprint: string; autoConnect: boolean }): Promise<void>;
+    add(config: { id: string; name: string; host: string; port: number; autoConnect: boolean }): Promise<void>;
+    addAndConnect(host: string, port: number, name: string): Promise<string>;
     connect(daemonId: string): Promise<void>;
     disconnect(daemonId: string): Promise<void>;
     remove(daemonId: string): Promise<void>;
     statuses(): Promise<Array<{ id: string; name: string; status: string; sessionCount: number }>>;
     onStatusChanged(callback: (daemonId: string, name: string, status: string) => void): () => void;
     onConnected(callback: (daemonId: string, name: string) => void): () => void;
-    pair(host: string, port: number, clientName: string): Promise<void>;
-    submitCode(code: string): Promise<void>;
-    onPairChallenge(callback: (daemonName: string) => void): () => void;
-    onPairSuccess(callback: (name: string) => void): () => void;
-    onPairFailed(callback: (reason: string) => void): () => void;
+    onError(callback: (err: { daemonId: string; daemonName: string; code: string; message: string }) => void): () => void;
+    localService: {
+      status(): Promise<{ installed: boolean; running: boolean; pid?: number; installBlocked?: boolean; installBlockedReason?: string }>;
+      install(): Promise<{ ok: boolean; message?: string }>;
+      uninstall(): Promise<{ ok: boolean; message?: string }>;
+    };
   };
   desktopIntegration: {
     status(): Promise<DesktopIntegrationStatus>;
@@ -193,9 +193,10 @@ export interface DesktopIntegrationStatus {
 }
 
 export type RemoteProvisionStepId =
-  | 'test-connection' | 'probe-target' | 'check-existing' | 'upload-tarball'
-  | 'extract' | 'install-service' | 'wait-ready' | 'read-code'
-  | 'complete-pairing' | 'cleanup';
+  | 'test-connection' | 'probe-target' | 'check-existing'
+  | 'upload-tarball' | 'upload-certs'
+  | 'extract' | 'install-service' | 'wait-ready'
+  | 'connect-client' | 'cleanup';
 
 export type RemoteProvisionStepStatus = 'pending' | 'active' | 'done' | 'failed';
 
@@ -219,6 +220,11 @@ export interface RemoteProvisionRequest {
   target: RemoteProvisionTarget;
   daemonName?: string;
   daemonPort: number;
+  certs: {
+    serverCertPath: string;
+    serverKeyPath: string;
+    caCertPath: string;
+  };
 }
 
 declare global {

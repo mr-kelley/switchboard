@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { WebSocket } from 'ws';
 import { BrowserWindow } from 'electron';
 import {
@@ -15,7 +18,63 @@ import type { PreferencesStore } from './preferences-store';
 
 export type { DaemonConnectionConfig } from '../shared/types';
 
+// Handshake completes fast; "authenticating" is retained as a status name so
+// existing UI status-color logic keeps working, but under mTLS it's a
+// transient state between socket 'open' and the daemon's unsolicited auth:ok
+// metadata message.
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting';
+
+interface ClientCertBundle {
+  cert: string;
+  key: string;
+  ca: string;
+}
+
+let cachedBundle: ClientCertBundle | Error | null = null;
+
+/**
+ * Load the client's own cert + key + the lab CA root. Same well-known-path
+ * pattern as the daemon: `SWITCHBOARD_TLS_DIR` env → `~/.switchboard/tls/`.
+ * Cached across the process lifetime; a broken load caches the error so
+ * repeated connection attempts don't spam the filesystem.
+ */
+function loadClientCertBundle(): ClientCertBundle {
+  if (cachedBundle instanceof Error) throw cachedBundle;
+  if (cachedBundle) return cachedBundle;
+
+  const dir = process.env.SWITCHBOARD_TLS_DIR || path.join(os.homedir(), '.switchboard', 'tls');
+  const read = (name: string): string => {
+    const p = path.join(dir, name);
+    try {
+      const body = fs.readFileSync(p, 'utf-8');
+      if (!body.includes('-----BEGIN')) {
+        throw new Error(`${p} exists but is not a PEM file`);
+      }
+      return body;
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e.code === 'ENOENT') {
+        throw new Error(
+          `TLS file missing: ${p}. The client needs a lab-CA-signed client cert + key + the CA root at ${dir}. ` +
+            `See specs/src/daemon/transport-mtls-spec.md.`
+        );
+      }
+      throw err;
+    }
+  };
+  try {
+    const bundle: ClientCertBundle = {
+      cert: read('client.crt'),
+      key: read('client.key'),
+      ca: read('ca.crt'),
+    };
+    cachedBundle = bundle;
+    return bundle;
+  } catch (err) {
+    cachedBundle = err as Error;
+    throw err;
+  }
+}
 
 interface ManagedConnection {
   config: DaemonConnectionConfig;
@@ -61,45 +120,15 @@ export class ConnectionManager {
   private connections = new Map<string, ManagedConnection>();
   private prefsStore: PreferencesStore | undefined;
   private attentionListeners = new Set<() => void>();
-  private pairSuccessOnceListeners: Array<() => void> = [];
-  private pairFailedOnceListeners: Array<(reason: string) => void> = [];
 
   constructor(prefsStore?: PreferencesStore) {
     this.prefsStore = prefsStore;
   }
 
   /**
-   * Register a one-shot callback fired the next time a pairing succeeds.
-   * Used by the remote-provisioner to await the daemon side of a pair. The
-   * listener is removed automatically when fired (or when a matching
-   * onPairFailedOnce fires — the two are mutually exclusive per attempt).
-   */
-  onPairSuccessOnce(cb: () => void): void {
-    this.pairSuccessOnceListeners.push(cb);
-  }
-
-  onPairFailedOnce(cb: (reason: string) => void): void {
-    this.pairFailedOnceListeners.push(cb);
-  }
-
-  /** Fire (and drain) both once-listener queues for a pair-success event. */
-  private firePairSuccess(): void {
-    const cbs = this.pairSuccessOnceListeners.splice(0);
-    this.pairFailedOnceListeners.splice(0); // failed listeners for this attempt are moot
-    for (const cb of cbs) { try { cb(); } catch (err) { console.error('pair-success listener error:', err); } }
-  }
-
-  /** Fire (and drain) both once-listener queues for a pair-failed event. */
-  private firePairFailed(reason: string): void {
-    const cbs = this.pairFailedOnceListeners.splice(0);
-    this.pairSuccessOnceListeners.splice(0);
-    for (const cb of cbs) { try { cb(reason); } catch (err) { console.error('pair-failed listener error:', err); } }
-  }
-
-  /**
    * Persist all non-localhost daemon configs to preferences so they survive
    * client restarts. Localhost is re-added by local-daemon auto-start each
-   * launch with a fresh token, so it doesn't belong in prefs.
+   * launch, so it doesn't belong in prefs.
    */
   private persistConnections(): void {
     if (!this.prefsStore) return;
@@ -136,17 +165,38 @@ export class ConnectionManager {
     if (!conn) throw new Error(`Unknown daemon: ${daemonId}`);
     if (conn.status === 'connected' || conn.status === 'connecting' || conn.status === 'authenticating') return;
 
+    let bundle: ClientCertBundle;
+    try {
+      bundle = loadClientCertBundle();
+    } catch (err) {
+      this.setStatus(conn, 'disconnected');
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[conn] ${conn.config.name}: cannot load client TLS bundle — ${message}`);
+      broadcast('daemon:error', {
+        daemonId: conn.config.id,
+        daemonName: conn.config.name,
+        code: 'CLIENT_TLS_MISSING',
+        message,
+      });
+      return;
+    }
+
     this.setStatus(conn, 'connecting');
 
     const ws = new WebSocket(`wss://${bracketHost(conn.config.host)}:${conn.config.port}`, {
-      rejectUnauthorized: false, // Self-signed certs; validated via fingerprint
+      cert: bundle.cert,
+      key: bundle.key,
+      ca: bundle.ca,
+      // rejectUnauthorized defaults to true; we intentionally do NOT override.
     });
 
     conn.ws = ws;
 
     ws.on('open', () => {
+      // mTLS handshake completed. Daemon will send an unsolicited auth:ok with
+      // its identity metadata almost immediately; we transition to 'connected'
+      // there. Sit in 'authenticating' for the brief window until that arrives.
       this.setStatus(conn, 'authenticating');
-      this.sendToDaemon(conn, { type: 'auth', token: conn.config.token });
     });
 
     ws.on('message', (rawData) => {
@@ -410,179 +460,49 @@ export class ConnectionManager {
     return this.connections.size > 0;
   }
 
-  // --- Pairing ---
-
-  private pairingWs: WebSocket | null = null;
-  private pairingHost = '';
-  private pairingPort = 0;
-  private pairingTokenData: any = null;
-
   /**
-   * Initiate pairing with a daemon. Opens a WebSocket, sends pair:request,
-   * and waits for the daemon to issue a challenge.
+   * Register a new daemon connection from operator input (host + port) and
+   * connect. Under mTLS there is no pairing dance: the client presents its
+   * cert, the daemon presents its cert, both sides validate against the lab
+   * CA, and the connection either succeeds or fails at the TLS layer.
+   * The daemon's identity (daemonId, hostname) arrives via the unsolicited
+   * `auth:ok` metadata message, which upgrades this provisional config.
    */
-  async pair(host: string, port: number, clientName: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`wss://${bracketHost(host)}:${port}`, {
-        rejectUnauthorized: false,
-      });
-
-      this.pairingWs = ws;
-      this.pairingHost = host;
-      this.pairingPort = port;
-      this.pairingTokenData = null;
-
-      ws.on('open', () => {
-        ws.send(JSON.stringify({ type: 'pair:request', seq: 1, clientName }));
-      });
-
-      ws.on('message', (rawData) => {
-        try {
-          const msg = JSON.parse(rawData.toString());
-
-          if (msg.type === 'pair:challenge') {
-            broadcast('daemon:pair-challenge', {
-              host, port,
-              daemonName: msg.daemonName || msg.hostname,
-            });
-            resolve();
-          } else if (msg.type === 'pair:token') {
-            // Save token data — we'll use it when auth:ok arrives
-            this.pairingTokenData = msg;
-          } else if (msg.type === 'auth:ok') {
-            // Pairing + auth complete on this WS — promote it to a managed connection
-            if (this.pairingTokenData) {
-              this.promotePairingConnection(host, port, ws, this.pairingTokenData, msg);
-            }
-          } else if (msg.type === 'pair:fail') {
-            broadcast('daemon:pair-failed', { reason: msg.reason });
-            this.firePairFailed(msg.reason);
-            ws.close();
-          }
-        } catch {
-          // Ignore
-        }
-      });
-
-      ws.on('error', (err) => {
-        this.pairingWs = null;
-        reject(new Error(`Failed to connect to ${host}:${port}: ${err.message}`));
-      });
-
-      // Only clean up pairingWs ref if the WS wasn't promoted
-      ws.on('close', () => {
-        if (this.pairingWs === ws) {
-          this.pairingWs = null;
-        }
-      });
-    });
-  }
-
-  /**
-   * Submit the pairing code entered by the user.
-   */
-  submitPairingCode(code: string): void {
-    if (!this.pairingWs || this.pairingWs.readyState !== WebSocket.OPEN) {
-      broadcast('daemon:pair-failed', { reason: 'No pairing in progress' });
-      this.firePairFailed('No pairing in progress');
-      return;
-    }
-    this.pairingWs.send(JSON.stringify({ type: 'pair:response', seq: 2, code }));
-  }
-
-  /**
-   * Promote the pairing WebSocket to a full managed connection.
-   * This avoids opening a second WS — the pairing WS is already authenticated.
-   */
-  private promotePairingConnection(host: string, port: number, ws: WebSocket, tokenData: any, authOk: any): void {
+  addAndConnect(host: string, port: number, displayName: string): string {
+    // Provisional id — will be replaced with the daemon's real daemonId when
+    // auth:ok arrives, so persistence uses stable identity.
+    const provisionalId = `pending:${host}:${port}:${Date.now()}`;
     const config: DaemonConnectionConfig = {
-      id: tokenData.daemonId || `daemon-${Date.now()}`,
-      name: tokenData.hostname || `${host}:${port}`,
+      id: provisionalId,
+      name: displayName || `${host}:${port}`,
       host,
       port,
-      token: tokenData.token,
-      fingerprint: tokenData.fingerprint || '',
       autoConnect: true,
     };
-
-    console.log(`[pairing] Promoting pairing WS to managed connection ${config.id} (${config.name})`);
-
-    // Clear pairing state
-    this.pairingWs = null;
-    this.pairingTokenData = null;
-
-    // Create the managed connection with the existing WS
-    const conn: ManagedConnection = {
-      config,
-      ws,
-      status: 'connected',
-      seq: new SequenceCounter(),
-      reconnectTimer: null,
-      reconnectDelay: 1000,
-      lastPong: Date.now(),
-      sessions: new Map(),
-      replayingSessions: new Set(),
-    };
-
-    this.connections.set(config.id, conn);
-    this.persistConnections();
-
-    // Re-wire the WS message handler to use the managed connection's handler
-    ws.removeAllListeners('message');
-    ws.removeAllListeners('close');
-    ws.removeAllListeners('error');
-
-    ws.on('message', (rawData) => {
-      try {
-        const msg = deserializeMessage(rawData.toString()) as DaemonMessage;
-        this.handleDaemonMessage(conn, msg);
-      } catch {
-        // Ignore
-      }
-    });
-
-    ws.on('close', () => {
-      const wasConnected = conn.status === 'connected';
-      conn.ws = null;
-      if (wasConnected) {
-        this.setStatus(conn, 'reconnecting');
-        this.scheduleReconnect(conn);
-      } else {
-        this.setStatus(conn, 'disconnected');
-      }
-    });
-
-    ws.on('error', () => {});
-
-    ws.on('pong', () => {
-      conn.lastPong = Date.now();
-    });
-
-    // Broadcast connected status
-    broadcast('daemon:connected', { daemonId: config.id, name: config.name });
-    broadcast('daemon:pair-success', { name: config.name });
-    this.firePairSuccess();
-    this.setStatus(conn, 'connected');
-
-    // Request session list (the daemon already sent it after auth:ok,
-    // but our handler wasn't wired yet — request it again)
-    this.sendToDaemon(conn, { type: 'session:list' });
+    this.addConnection(config);
+    this.connect(provisionalId);
+    return provisionalId;
   }
 
   // --- Message handling ---
 
   private handleDaemonMessage(conn: ManagedConnection, msg: DaemonMessage): void {
     switch (msg.type) {
-      case 'auth:ok':
+      case 'auth:ok': {
+        // Unsolicited daemon metadata sent after the mTLS handshake completes.
+        // No credential is checked here; this is the moment we learn the
+        // daemon's stable identity (daemonId + hostname).
+        // If this connection was added via addAndConnect() with a provisional
+        // id, promote it to the real daemonId now so persistence is stable.
+        if (conn.config.id.startsWith('pending:') && msg.daemonId) {
+          this.rekeyConnection(conn, msg.daemonId, msg.hostname);
+        }
         this.setStatus(conn, 'connected');
-        conn.reconnectDelay = 1000; // Reset backoff
+        conn.reconnectDelay = 1000;
         broadcast('daemon:connected', { daemonId: conn.config.id, name: conn.config.name });
+        this.persistConnections();
         break;
-
-      case 'auth:fail':
-        this.setStatus(conn, 'disconnected');
-        broadcast('daemon:auth-failed', { daemonId: conn.config.id, reason: msg.reason });
-        break;
+      }
 
       case 'session:list':
         conn.sessions.clear();
@@ -710,6 +630,27 @@ export class ConnectionManager {
     if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
     const full = { ...msg, seq: conn.seq.next() };
     conn.ws.send(serializeMessage(full as BaseMessage));
+  }
+
+  /**
+   * Promote a provisional connection (id starts with 'pending:') to the
+   * daemon's real daemonId once auth:ok is received. Preserves the WS and
+   * all in-flight state; just rekeys the connections map.
+   */
+  private rekeyConnection(conn: ManagedConnection, realId: string, hostname: string): void {
+    if (this.connections.has(realId) && this.connections.get(realId) !== conn) {
+      // A prior connection to the same daemon already exists; drop the old one.
+      const existing = this.connections.get(realId)!;
+      this.connections.delete(realId);
+      if (existing.ws) {
+        try { existing.ws.close(1000, 'Superseded'); } catch { /* ignore */ }
+      }
+    }
+    const oldId = conn.config.id;
+    this.connections.delete(oldId);
+    conn.config = { ...conn.config, id: realId, name: hostname || conn.config.name };
+    this.connections.set(realId, conn);
+    console.log(`[conn] rekeyed ${oldId} → ${realId} (${conn.config.name})`);
   }
 
   private setStatus(conn: ManagedConnection, status: ConnectionStatus): void {
