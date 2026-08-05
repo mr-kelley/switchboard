@@ -240,12 +240,13 @@ export class RemoteProvisioner {
   private async probeTarget(): Promise<void> {
     const r = await ssh.run(
       this.req.target,
-      'set -e; echo "$HOME"; systemctl --user is-system-running || true; uname -m',
+      'set -e; echo "$HOME"; systemctl --user is-system-running || true; uname -m; ' +
+        'loginctl show-user "$USER" --property=Linger --value 2>/dev/null || echo unknown',
       { timeoutMs: 15_000 },
     );
     const lines = r.stdout.trim().split('\n').map((l) => l.trim());
-    if (lines.length < 3) throw new Error(`probe output malformed: ${r.stdout}`);
-    const [remoteHome, systemdStatus, unameM] = lines;
+    if (lines.length < 4) throw new Error(`probe output malformed: ${r.stdout}`);
+    const [remoteHome, systemdStatus, unameM, linger] = lines;
 
     if (!remoteHome.startsWith('/')) {
       throw new Error(`Could not resolve $HOME on target (got: ${JSON.stringify(remoteHome)})`);
@@ -254,6 +255,19 @@ export class RemoteProvisioner {
       throw new Error(
         `systemd --user is not active on target (status: ${JSON.stringify(systemdStatus)}). ` +
         `You may need to enable lingering: sudo loginctl enable-linger ${this.req.target.user}`,
+      );
+    }
+    // Linger MUST be enabled on the target user. Without it, the user's
+    // systemd instance is torn down whenever the last login session exits,
+    // taking the daemon with it — visible at provision time only because
+    // our SSH login is itself the session keeping systemd alive. See
+    // DEC-000013.
+    if (linger !== 'yes') {
+      throw new Error(
+        `user lingering is not enabled on target for ${this.req.target.user} ` +
+        `(Linger=${JSON.stringify(linger)}). The daemon will die as soon as ` +
+        `every login session for this user exits. Run on the target: ` +
+        `sudo loginctl enable-linger ${this.req.target.user}, then retry. See DEC-000013.`,
       );
     }
 
