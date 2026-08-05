@@ -41,23 +41,37 @@ jobs:
         if: matrix.docker_platform != ''
         uses: docker/setup-qemu-action@v3
 
+      # Install + TS build happen on the host — arch-agnostic and much faster
+      # than doing them under QEMU emulation. --ignore-scripts sidesteps
+      # electron-winstaller's postinstall (Windows-only helper transitively
+      # pulled in by electron-builder — it copies an arch-specific 7-Zip binary
+      # and has no armv7l variant, so it crashes inside the arm containers).
+      # We don't need that helper for anything the daemon tarball touches;
+      # node-pty's own install script we re-run explicitly via `npm rebuild`.
+      - name: Install deps (host, skip postinstalls)
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild node-pty (host, native x64)
+        if: matrix.docker_platform == ''
+        run: npm rebuild node-pty
+
+      - name: Build daemon TS output
+        run: npm run build:daemon
+
       - name: Build tarball (native x64)
         if: matrix.docker_platform == ''
-        run: |
-          npm install
-          npm run build:daemon
-          ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh
+        run: ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh
 
       - name: Build tarball (emulated arm)
         if: matrix.docker_platform != ''
         run: |
-          # Run npm install + build inside a matching-arch container so
-          # node-pty compiles for the target ABI. The tarball script then
-          # downloads the arch-matched Node binary from nodejs.org.
+          # Only the arch-sensitive parts run in the container: rebuild node-pty
+          # for the target ABI + assemble the tarball. dist/daemon and the rest
+          # of node_modules come from the host install via the volume mount.
           docker run --rm --platform ${{ matrix.docker_platform }} \
             -v "${{ github.workspace }}:/work" -w /work \
             node:20-bookworm \
-            bash -c "npm install && npm run build:daemon && ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh"
+            bash -c "npm rebuild node-pty && ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh"
 
       - name: Verify tarball
         run: |
