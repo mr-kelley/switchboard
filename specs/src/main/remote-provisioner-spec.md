@@ -1,6 +1,6 @@
 ---
 title: Remote Provisioner Specification
-version: 0.3.0
+version: 0.3.1
 maintained_by: claude
 domain_tags: [electron, main-process, remote-provisioning, ssh, systemd, mtls, multi-arch]
 status: active
@@ -49,7 +49,7 @@ Auth is mutual TLS keyed off the operator's lab CA (DEC-000010); tarball selecti
 | # | id | Purpose | Remote command |
 |---|----|---------|----------------|
 | 1 | `test-connection` | Verify SSH auth + reachability | `true` |
-| 2 | `probe-target` | Resolve `$HOME`, verify systemd --user is active, **and read `uname -m`** to select the matching tarball. Node is not probed — the tarball bundles its own runtime (DEC-000009). | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true; uname -m` |
+| 2 | `probe-target` | Resolve `$HOME`, verify systemd --user is active, read `uname -m` to select the matching tarball, **and verify `Linger=yes` for the target user** so the daemon survives after our SSH login exits. Node is not probed — the tarball bundles its own runtime (DEC-000009). | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true; uname -m; loginctl show-user "$USER" --property=Linger --value 2>/dev/null \|\| echo unknown` |
 | 3 | `check-existing` | Detect a prior install (informational; does not branch behavior in v1) | `test -f ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js && echo yes \|\| echo no` |
 | 4 | `upload-tarball` | scp the **arch-matched** daemon tarball to `/tmp/switchboard-daemon.tar.gz` | (scp) |
 | 5 | `upload-certs` | Upload `server.crt`, `server.key`, `ca.crt` to `~/.switchboard/tls/` with `0700` on the dir, `0644`/`0600`/`0644` respectively | (scp + `install -m`) |
@@ -130,6 +130,7 @@ If none exist, `upload-tarball` throws with the resolved paths in the error mess
 # Edge Cases / Fault Handling
 - **Target has no Node installed:** not an error — the tarball bundles its own runtime.
 - **`systemctl --user` not active** (no user session, no linger): step 2 throws suggesting `loginctl enable-linger $USER`.
+- **User lingering not enabled** (`Linger=no` from `loginctl show-user`): step 2 fails closed with a message naming the target user and the exact `sudo loginctl enable-linger <user>` command. Without lingering, the target's per-user systemd manager tears down when the last login session exits, taking the daemon with it — the failure is invisible at provision time because our SSH session is itself keeping systemd alive. See DEC-000013. The provisioner intentionally does not run the sudo itself.
 - **`uname -m` returns an unsupported string:** step 2 throws with a message like `unsupported target arch: 'armv6l'; supported: x86_64, aarch64, armv7l. See DEC-000012.` Retriable in the sense that a re-run will re-probe — but the only real recovery is a different target host.
 - **Local tarball for the detected arch does not exist:** step 4 throws with the full search-path list. Points at either a client-side build gap (dev machine missing an arch) or a broken release artifact.
 - **Existing install detected:** step 3 records a `message` but does not branch; step 6 always removes and re-extracts.

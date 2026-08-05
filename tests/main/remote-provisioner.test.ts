@@ -74,9 +74,14 @@ function makeRunner(overrides: Record<string, string | ((args: string[]) => stri
   return calls;
 }
 
-// Probe output is now three lines: $HOME, systemctl status, uname -m.
-function probeStdout(unameM: string, systemd = 'running', home = '/home/ubuntu'): string {
-  return `${home}\n${systemd}\n${unameM}`;
+// Probe output is four lines: $HOME, systemctl status, uname -m, Linger.
+function probeStdout(
+  unameM: string,
+  systemd = 'running',
+  home = '/home/ubuntu',
+  linger = 'yes',
+): string {
+  return `${home}\n${systemd}\n${unameM}\n${linger}`;
 }
 
 const target = { host: 'server.example.com', user: 'ubuntu', port: 22 };
@@ -165,11 +170,20 @@ describe('RemoteProvisioner (mTLS + multi-arch)', () => {
     await expect(p.run()).rejects.toThrow(/Could not resolve \$HOME/);
   });
 
-  it('rejects when probe output is truncated (missing uname line)', async () => {
-    makeRunner({ 'uname -m': '/home/ubuntu\nrunning' });
+  it('rejects when probe output is truncated (missing linger line)', async () => {
+    makeRunner({ 'uname -m': '/home/ubuntu\nrunning\nx86_64' });
     const { p } = makeProvisioner();
     await expect(p.run()).rejects.toThrow(/probe output malformed/);
   });
+
+  it.each(['no', 'unknown'])(
+    'rejects when user lingering is not enabled (Linger=%s)',
+    async (linger) => {
+      makeRunner({ 'uname -m': probeStdout('x86_64', 'running', '/home/ubuntu', linger) });
+      const { p } = makeProvisioner();
+      await expect(p.run()).rejects.toThrow(/lingering is not enabled.*loginctl enable-linger ubuntu/);
+    },
+  );
 
   it('rejects when a cert file is missing', async () => {
     fs.unlinkSync(certPaths.serverCertPath);
