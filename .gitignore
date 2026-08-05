@@ -36,3 +36,8 @@ npm-debug.log*
 # Issue drafts (local working directory)
 .issues/
 .cache/
+
+# Handoffs — inbound/outbound working documents that typically contain
+# lab-specific info; other roles keep authoritative copies in their own
+# internal repos. My copy stays untracked.
+.handoffs/

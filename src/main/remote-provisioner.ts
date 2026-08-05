@@ -6,10 +6,16 @@ import type { ConnectionManager } from './connection-manager';
 
 /**
  * Under mTLS (DEC-000010) provisioning is a straight-line install: SSH
- * reachable → target has systemd --user → upload tarball + certs → extract
- * → install systemd unit → wait for daemon to accept connections → done.
- * The client then connects via the standard `connect()` path with its own
- * cert. There is no pairing dance; TLS is the sole auth boundary.
+ * reachable → target has systemd --user → detect target arch → upload the
+ * matching tarball + certs → extract → install systemd unit → wait for daemon
+ * to accept connections → done. The client then connects via the standard
+ * `connect()` path with its own cert. There is no pairing dance; TLS is the
+ * sole auth boundary.
+ *
+ * Multi-arch (DEC-000012): `probe-target` reads `uname -m` on the target and
+ * maps it to one of the three supported ARCH slugs; `upload-tarball` picks
+ * the matching tarball from the client's bundle. Unsupported arches fail
+ * closed at probe time.
  */
 export type StepId =
   | 'test-connection'
@@ -24,6 +30,23 @@ export type StepId =
   | 'cleanup';
 
 export type StepStatus = 'pending' | 'active' | 'done' | 'failed';
+
+/**
+ * The three ARCH slugs shipped in v1. Adding a new one requires updating
+ * `ARCH_TABLE`, the build script, the electron-builder extraResources glob,
+ * and the DEC. See DEC-000012.
+ */
+export type TargetArch = 'linux-x64' | 'linux-arm64' | 'linux-armv7l';
+
+/**
+ * Map from `uname -m` output (verbatim) to our ARCH slug. Kept as a plain
+ * object so the failure message can list the supported keys.
+ */
+const ARCH_TABLE: Record<string, TargetArch> = {
+  x86_64: 'linux-x64',
+  aarch64: 'linux-arm64',
+  armv7l: 'linux-armv7l',
+};
 
 export interface StepState {
   id: StepId;
@@ -47,8 +70,12 @@ export interface ProvisionRequest {
   target: ssh.SshTarget;
   /** Human-friendly label for the daemon in the client (defaults to host). */
   daemonName?: string;
-  /** Absolute path to the local switchboard-daemon-*.tar.gz built by dist:daemon-tarball. */
-  tarballPath: string;
+  /**
+   * The app version — used to locate the matching per-arch tarball via
+   * `defaultTarballPath(appVersion, arch)`. The provisioner picks the arch
+   * from `probe-target`, so the caller does not need to know it.
+   */
+  appVersion: string;
   /** Local port the daemon will listen on (matches its systemd unit). */
   daemonPort: number;
   /**
@@ -68,7 +95,7 @@ const REMOTE_TLS_DIR = '~/.switchboard/tls';
 
 const STEP_LABELS: Record<StepId, string> = {
   'test-connection': 'Test SSH connection',
-  'probe-target': 'Probe target (resolve $HOME, check systemd --user)',
+  'probe-target': 'Probe target (resolve $HOME, check systemd --user, detect arch)',
   'check-existing': 'Check for existing install',
   'upload-tarball': 'Upload daemon tarball',
   'upload-certs': 'Upload TLS certs',
@@ -126,12 +153,15 @@ function safeHeredoc(marker: string, content: string): string {
 export class RemoteProvisioner {
   private steps: StepState[];
   private cancelled = false;
-  private probed: { remoteHome: string } | null = null;
+  private probed: { remoteHome: string; arch: TargetArch } | null = null;
 
   constructor(
     private req: ProvisionRequest,
     private connectionManager: ConnectionManager,
     private onProgress: ProgressCallback,
+    // Injectable so tests can substitute a stub that points at a fake tarball
+    // without needing to seed the production search paths on disk.
+    private resolveTarballPath: (version: string, arch: TargetArch) => string = defaultTarballPath,
   ) {
     this.steps = STEP_ORDER.map((id) => ({ id, label: STEP_LABELS[id], status: 'pending' }));
   }
@@ -210,12 +240,12 @@ export class RemoteProvisioner {
   private async probeTarget(): Promise<void> {
     const r = await ssh.run(
       this.req.target,
-      'set -e; echo "$HOME"; systemctl --user is-system-running || true',
+      'set -e; echo "$HOME"; systemctl --user is-system-running || true; uname -m',
       { timeoutMs: 15_000 },
     );
     const lines = r.stdout.trim().split('\n').map((l) => l.trim());
-    if (lines.length < 2) throw new Error(`probe output malformed: ${r.stdout}`);
-    const [remoteHome, systemdStatus] = lines;
+    if (lines.length < 3) throw new Error(`probe output malformed: ${r.stdout}`);
+    const [remoteHome, systemdStatus, unameM] = lines;
 
     if (!remoteHome.startsWith('/')) {
       throw new Error(`Could not resolve $HOME on target (got: ${JSON.stringify(remoteHome)})`);
@@ -226,8 +256,19 @@ export class RemoteProvisioner {
         `You may need to enable lingering: sudo loginctl enable-linger ${this.req.target.user}`,
       );
     }
-    this.probed = { remoteHome };
-    this.setStep('probe-target', { message: `home=${remoteHome}, systemd=${systemdStatus}` });
+
+    const arch = ARCH_TABLE[unameM];
+    if (!arch) {
+      const supported = Object.keys(ARCH_TABLE).join(', ');
+      throw new Error(
+        `unsupported target arch: ${JSON.stringify(unameM)}; supported: ${supported}. See DEC-000012.`,
+      );
+    }
+
+    this.probed = { remoteHome, arch };
+    this.setStep('probe-target', {
+      message: `home=${remoteHome}, systemd=${systemdStatus}, arch=${arch} (${unameM})`,
+    });
   }
 
   private async checkExisting(): Promise<void> {
@@ -242,12 +283,16 @@ export class RemoteProvisioner {
   }
 
   private async uploadTarball(): Promise<void> {
-    if (!fs.existsSync(this.req.tarballPath)) {
-      throw new Error(`Local tarball not found: ${this.req.tarballPath}`);
+    if (!this.probed) throw new Error('uploadTarball called before probe-target populated arch');
+    const tarballPath = this.resolveTarballPath(this.req.appVersion, this.probed.arch);
+    if (!fs.existsSync(tarballPath)) {
+      throw new Error(`Local tarball not found for ${this.probed.arch}: ${tarballPath}`);
     }
-    await ssh.upload(this.req.target, this.req.tarballPath, REMOTE_TARBALL_TMP);
-    const size = fs.statSync(this.req.tarballPath).size;
-    this.setStep('upload-tarball', { message: `${(size / 1024).toFixed(0)} KB uploaded` });
+    await ssh.upload(this.req.target, tarballPath, REMOTE_TARBALL_TMP);
+    const size = fs.statSync(tarballPath).size;
+    this.setStep('upload-tarball', {
+      message: `${this.probed.arch}: ${(size / 1024).toFixed(0)} KB uploaded`,
+    });
   }
 
   private async uploadCerts(): Promise<void> {
@@ -371,9 +416,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function defaultTarballPath(version: string): string {
-  const versioned = `switchboard-daemon-${version}-linux-x64.tar.gz`;
-  const stable = 'switchboard-daemon.tar.gz';
+/**
+ * Resolve the local path to the daemon tarball for a given arch. Search
+ * order matches the pre-DEC-000012 flow, but every candidate is now
+ * arch-suffixed — the AppImage bundles one stable-name tarball per arch
+ * (see specs/scripts/build-daemon-tarball-spec.md).
+ */
+export function defaultTarballPath(version: string, arch: TargetArch): string {
+  const stable = `switchboard-daemon-${arch}.tar.gz`;
+  const versioned = `switchboard-daemon-${version}-${arch}.tar.gz`;
 
   const packagedStable = path.join(process.resourcesPath || '', stable);
   if (fs.existsSync(packagedStable)) return packagedStable;
