@@ -92,6 +92,25 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
 
     terminal.open(containerRef.current);
 
+    // Ctrl+Shift+C copies the current selection to the clipboard (standard
+    // Linux-terminal convention — plain Ctrl+C stays reserved for SIGINT).
+    // Paste (Ctrl+Shift+V) is handled by the browser's default paste event,
+    // which xterm.js consumes automatically.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true;
+      if (event.ctrlKey && event.shiftKey && (event.key === 'C' || event.key === 'c')) {
+        if (terminal.hasSelection()) {
+          navigator.clipboard.writeText(terminal.getSelection()).catch(() => {
+            // Clipboard write can fail if the window isn't focused; fall
+            // back to Electron's clipboard via the preload bridge if the
+            // renderer path is blocked. For now, swallow — user can retry.
+          });
+        }
+        return false;
+      }
+      return true;
+    });
+
     // Attach WebGL after open (skip if using background image — WebGL doesn't support transparency)
     webglAddonRef.current = hasBackgroundImage ? null : tryAttachWebgl(terminal);
 
