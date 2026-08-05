@@ -1,8 +1,8 @@
 ---
 title: Remote Provisioner Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
-domain_tags: [electron, main-process, remote-provisioning, ssh, systemd, pairing]
+domain_tags: [electron, main-process, remote-provisioning, ssh, systemd, mtls, multi-arch]
 status: active
 platform: claude-code
 license: Apache-2.0
@@ -10,7 +10,9 @@ governs: src/main/remote-provisioner.ts
 ---
 
 # Purpose
-Orchestrate the end-to-end install of the Switchboard daemon on a target Linux host over SSH: probe → transfer → extract → install as a `systemd --user` service → wait for readiness → auto-pair. Emits per-step progress so the renderer's modal can render a live checklist, supports cancellation, and supports resuming from a specific step after a failure.
+Orchestrate the end-to-end install of the Switchboard daemon on a target Linux host over SSH: probe (including target-arch detection) → transfer daemon tarball + cert bundle → extract → install as a `systemd --user` service → wait for readiness → open a client connection. Emits per-step progress so the renderer's modal can render a live checklist, supports cancellation, and supports resuming from a specific step after a failure.
+
+Auth is mutual TLS keyed off the operator's lab CA (DEC-000010); tarball selection is arch-aware across `linux-x64`, `linux-arm64`, and `linux-armv7l` (DEC-000012).
 
 # Scope
 
@@ -19,22 +21,27 @@ Orchestrate the end-to-end install of the Switchboard daemon on a target Linux h
 - Idempotency of each step (a retry from a given step must not corrupt state left by a prior partial run).
 - Progress callback protocol.
 - Cancellation semantics.
-- Locating the local daemon tarball on disk (dev + packaged).
+- Locating the correct multi-arch daemon tarball on the client disk (dev + packaged) given the target's arch.
+- The mapping from `uname -m` to tarball ARCH slug, and the failure mode for unsupported arches.
+- Cert bundle upload (server cert / key / CA cert) into the target's `~/.switchboard/tls/`.
 
 ## Does Not Cover
 - SSH plumbing (delegated to `ssh-client-spec.md`).
-- WebSocket pairing protocol (delegated to `ConnectionManager.pair()` / `submitPairingCode()`).
-- Bundling the tarball (owned by `scripts/build-daemon-tarball.sh` and `dist:daemon-tarball` npm script).
+- WebSocket transport / TLS handshake (delegated to `transport-mtls-spec.md`).
+- Tarball contents or how per-arch tarballs are built (delegated to `specs/scripts/build-daemon-tarball-spec.md`).
 - UI rendering (owned by `RemoteProvisioningModal-spec.md`).
+- Cert issuance from the lab CA (operator-provisioned out-of-band).
 
 # Inputs
-- `ProvisionRequest = { target: SshTarget, daemonName?, tarballPath, daemonPort }`.
-- `ConnectionManager` reference — for `pair(host, port, name)`, `submitPairingCode(code)`, `onPairSuccessOnce(cb)`, `onPairFailedOnce(cb)`.
+- `ProvisionRequest = { target: SshTarget, daemonName?, tarballPath, daemonPort, certs: ServerCertBundle }`.
+  - `tarballPath` in v0.3 is an **arch-templated** path; the provisioner substitutes the detected ARCH slug at upload time. See §Tarball Path Resolution.
+  - `certs: { serverCertPath, serverKeyPath, caCertPath }` — absolute local paths to the operator-issued cert bundle for this target.
+- `ConnectionManager` reference — for `addAndConnect(host, port, name)`.
 - `ProgressCallback = (state: readonly StepState[]) => void` — invoked on every step transition.
 
 # Outputs
 - Progress callbacks with the current step list snapshot.
-- On success: a new managed connection appears in `ConnectionManager`, persisted to preferences via the connection promotion flow.
+- On success: a new managed connection appears in `ConnectionManager` (via `addAndConnect`), which the mTLS `auth:ok` handshake will rekey to the daemon's real `daemonId` (see `transport-mtls-spec.md`).
 - On failure: throws the underlying error; leaves the failed step marked `failed` with `errorKind` + `errorDetail`.
 
 # Step Definitions
@@ -42,65 +49,111 @@ Orchestrate the end-to-end install of the Switchboard daemon on a target Linux h
 | # | id | Purpose | Remote command |
 |---|----|---------|----------------|
 | 1 | `test-connection` | Verify SSH auth + reachability | `true` |
-| 2 | `probe-target` | Resolve `$HOME` and verify systemd --user is active. (Node is not probed — the tarball bundles its own runtime, see DEC-000009.) | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true` |
+| 2 | `probe-target` | Resolve `$HOME`, verify systemd --user is active, **and read `uname -m`** to select the matching tarball. Node is not probed — the tarball bundles its own runtime (DEC-000009). | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true; uname -m` |
 | 3 | `check-existing` | Detect a prior install (informational; does not branch behavior in v1) | `test -f ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js && echo yes \|\| echo no` |
-| 4 | `upload-tarball` | scp the local daemon tarball to `/tmp/switchboard-daemon.tar.gz` | (scp) |
-| 5 | `extract` | Overwrite prior install and extract | `mkdir -p ~/.local/share/switchboard && rm -rf ~/.local/share/switchboard/switchboard-daemon && tar -xzf /tmp/switchboard-daemon.tar.gz -C ~/.local/share/switchboard && rm -f /tmp/switchboard-daemon.tar.gz` |
-| 6 | `install-service` | Write systemd user unit and enable+start | `mkdir -p ~/.config/systemd/user && FILE=~/.config/systemd/user/switchboard-daemon.service && cat > "$FILE" <<'SB_UNIT_END'\n<unit>\nSB_UNIT_END\n && systemctl --user daemon-reload && systemctl --user enable --now switchboard-daemon` |
-| 7 | `wait-ready` | Poll `systemctl --user is-active` and the journal for a listening marker | Loop with 500ms sleep, 30s timeout |
-| 8 | `read-code` | Placeholder step; the actual read happens inside `complete-pairing` after `pair:request` is sent | — |
-| 9 | `complete-pairing` | Kick off client-side `pair()`, poll the remote `~/.switchboard/pairing-code.txt`, submit code, await `pair-success` | `cat ~/.switchboard/pairing-code.txt` (in a 10s poll) |
-| 10 | `cleanup` | Remove tarball and pairing-code files | `rm -f /tmp/switchboard-daemon.tar.gz ~/.switchboard/pairing-code.txt` |
+| 4 | `upload-tarball` | scp the **arch-matched** daemon tarball to `/tmp/switchboard-daemon.tar.gz` | (scp) |
+| 5 | `upload-certs` | Upload `server.crt`, `server.key`, `ca.crt` to `~/.switchboard/tls/` with `0700` on the dir, `0644`/`0600`/`0644` respectively | (scp + `install -m`) |
+| 6 | `extract` | Stop any prior daemon, overwrite prior install and extract | `systemctl --user stop switchboard-daemon 2>/dev/null \|\| true; mkdir -p ~/.local/share/switchboard && rm -rf ~/.local/share/switchboard/switchboard-daemon && tar -xzf /tmp/switchboard-daemon.tar.gz -C ~/.local/share/switchboard && rm -f /tmp/switchboard-daemon.tar.gz` |
+| 7 | `install-service` | Write systemd user unit and enable+restart | See §Systemd Unit Template |
+| 8 | `wait-ready` | Poll `systemctl --user is-active` and the journal for a listening/ready marker | Loop with 500ms sleep, 30s timeout |
+| 9 | `connect-client` | Kick off `ConnectionManager.addAndConnect(host, daemonPort, daemonName)` so the client attempts the mTLS handshake. The `auth:ok` metadata message rekeys the provisional record to the daemon's real `daemonId`. | (client-side WS open) |
+| 10 | `cleanup` | Remove temp tarball | `rm -f /tmp/switchboard-daemon.tar.gz 2>/dev/null \|\| true` |
+
+# Arch Detection (post-DEC-000012)
+
+## Reading the target's arch
+Step 2 (`probe-target`) captures `uname -m` alongside `$HOME` and the systemd status. The provisioner stores the raw string in its probe state and maps it via a fixed lookup table:
+
+| `uname -m` | ARCH slug used to select the tarball |
+|------------|--------------------------------------|
+| `x86_64`   | `linux-x64`   |
+| `aarch64`  | `linux-arm64` |
+| `armv7l`   | `linux-armv7l` |
+
+Any other value (e.g. `armv6l`, `i686`, `riscv64`, `ppc64le`) causes `probe-target` to throw with a message that names the reported string verbatim and lists the supported set — no fallback, no attempt to guess. This matches DEC-000012's fail-closed posture.
+
+## Idempotency across retries
+The detected ARCH is captured in the probe state alongside `remoteHome`. Retries from `probe-target` re-probe both. Retries from any later step reuse the probed values (a retry from `upload-tarball` after a network blip does not re-run `uname -m`).
 
 # Responsibilities
 
 ## State Machine
 - `run(fromStep?)`: resets `steps[fromStep..]` to `pending`, iterates them in order, calling `runStep(id)` for each. On error: marks the step `failed`, populates `errorKind` and `errorDetail`, and throws.
-- `cancel()`: sets an internal flag; the flag is checked between steps and inside `wait-ready`/`complete-pairing` polling loops. In-flight ssh/scp children do not receive SIGTERM (their timeouts fire naturally).
+- `cancel()`: sets an internal flag; the flag is checked between steps and inside `wait-ready` polling loops. In-flight ssh/scp children do not receive SIGTERM (their timeouts fire naturally).
 - `getState()`: snapshot of the current steps for inspection.
 
 ## Systemd Unit Template
-- `[Unit] Description=Switchboard daemon; After=network.target`
-- `[Service] Type=simple; Environment=SWITCHBOARD_HOST=0.0.0.0; ExecStart=~/.local/share/switchboard/switchboard-daemon/bin/node ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js; Restart=on-failure; RestartSec=5`
-- `[Install] WantedBy=default.target`
+```
+[Unit]
+Description=Switchboard daemon
+After=network.target
 
-`ExecStart` uses the Node binary bundled inside the tarball (`bin/node`, see DEC-000009) — the target host is not required to have Node installed. `remoteHome` is captured in step 2 and interpolated to form the absolute paths. The heredoc marker `SB_UNIT_END` is single-quoted to disable shell expansion; the writer function refuses to run if the unit content contains the marker on its own line.
+[Service]
+Type=simple
+Environment=SWITCHBOARD_HOST=::
+Environment=SWITCHBOARD_TLS_DIR=<home>/.switchboard/tls
+ExecStart=<install-root>/bin/node <install-root>/dist/daemon/daemon/daemon.js
+Restart=on-failure
+RestartSec=5
 
-## Pairing Integration
-- Step 9 first invokes `connectionManager.pair(host, 3717, daemonName)`. This opens a WS to the newly-installed daemon and sends `pair:request`, causing the daemon to write `~/.switchboard/pairing-code.txt`.
-- The step then polls that file over ssh (300ms interval, 10s deadline) until it contains a 6-digit code.
-- It submits the code via `connectionManager.submitPairingCode(code)`.
-- It awaits `onPairSuccessOnce(cb)` / `onPairFailedOnce(cb)` (both single-shot per attempt) with a 15s client-side timeout.
-- On `pair-success`, `ConnectionManager.promotePairingConnection(...)` has already persisted the connection to preferences; the modal closes.
+[Install]
+WantedBy=default.target
+```
+
+- `SWITCHBOARD_HOST=::` yields a dual-stack bind — mTLS + CA-validated client certs gate access, so a permissive bind is safe.
+- `SWITCHBOARD_TLS_DIR` points the daemon at the well-known cert path uploaded in step 5.
+- `ExecStart` uses the Node binary bundled inside the tarball (`bin/node`, DEC-000009). No target-side Node install is required.
+- `<home>` and `<install-root>` are captured in step 2 and interpolated when the unit file is written.
+- The heredoc marker (`SB_UNIT_END`) is single-quoted to disable shell expansion; `safeHeredoc` refuses to run if the unit content contains the marker on its own line.
+
+## Cert Upload
+- The remote TLS dir is created with `0700` and then populated with:
+  - `server.crt` → `0644`
+  - `server.key` → `0600`
+  - `ca.crt` → `0644`
+- Files are uploaded to `/tmp/sb-*` first and then moved into place via `install -m` in a single remote step, so a partial upload never leaves a live daemon reading a mid-write file.
+- The provisioner refuses to run `upload-certs` if any of the three local paths in `ProvisionRequest.certs` does not exist — checked before any bytes leave the client.
+
+## Client Connection (post-mTLS)
+- Step 9 calls `ConnectionManager.addAndConnect(host, daemonPort, daemonName)`. The client opens `wss://` with its own cert/key/ca; the daemon validates and sends an unsolicited `auth:ok` metadata message; the connection manager rekeys its provisional entry to the daemon's real `daemonId` at that point (see `transport-mtls-spec.md`).
+- The provisioner does not wait for the handshake to complete before marking `connect-client` done — that would double-count timeouts across two subsystems. If the handshake fails, the client surfaces the failure via the standard `daemon:error` channel, not the provisioning modal.
+
+# Tarball Path Resolution
+`defaultTarballPath(version, arch)` returns the path to the tarball matching a specific ARCH slug, resolved in this order:
+
+1. Packaged AppImage: `process.resourcesPath/switchboard-daemon-${arch}.tar.gz` (stable name — the AppImage carries every supported arch as an `extraResource`, see `specs/scripts/build-daemon-tarball-spec.md`).
+2. Dev build (relative to `app.getAppPath()`): `../../release/switchboard-daemon-${arch}.tar.gz` and `../../release/switchboard-daemon-${version}-${arch}.tar.gz`.
+3. CWD fallback: `./release/switchboard-daemon-${arch}.tar.gz` and `./release/switchboard-daemon-${version}-${arch}.tar.gz`.
+
+If none exist, `upload-tarball` throws with the resolved paths in the error message. The IPC handler that constructs a `ProvisionRequest` passes the arch value returned by `probe-target` into this resolver — meaning the caller doesn't need to know which arch the target is.
 
 # Edge Cases / Fault Handling
 - **Target has no Node installed:** not an error — the tarball bundles its own runtime.
-- **`systemctl --user` not active** (no user session, no linger): step 2 throws suggesting `loginctl enable-linger $USER` (requires sudo — outside our reach).
-- **Existing install detected:** step 3 records a `message` but does not branch; step 5 always removes and re-extracts.
-- **Daemon fails to bind port 3717 within 30s:** step 7 throws with the last observed service state or journal fragment. Retriable.
-- **Pairing code file never appears:** step 9 throws after 10s. Retriable from step 9 (re-triggers `pair:request`).
-- **Pairing rejected by daemon:** step 9 throws with the reason from `pair:fail`.
+- **`systemctl --user` not active** (no user session, no linger): step 2 throws suggesting `loginctl enable-linger $USER`.
+- **`uname -m` returns an unsupported string:** step 2 throws with a message like `unsupported target arch: 'armv6l'; supported: x86_64, aarch64, armv7l. See DEC-000012.` Retriable in the sense that a re-run will re-probe — but the only real recovery is a different target host.
+- **Local tarball for the detected arch does not exist:** step 4 throws with the full search-path list. Points at either a client-side build gap (dev machine missing an arch) or a broken release artifact.
+- **Existing install detected:** step 3 records a `message` but does not branch; step 6 always removes and re-extracts.
+- **Daemon fails to become active/ready within 30s:** step 8 throws with the last observed service state or journal fragment. Retriable.
+- **Cert bundle path missing on the client:** step 5 throws before any upload, naming the missing path.
+- **Cert dir already exists on the target with looser perms:** step 5's `chmod 700` tightens it.
 - **Cancel during a step:** the current step's shell child completes on its own (up to 30s worst case for `run()`); after control returns to the state machine, the loop notices the flag and stops before starting the next step.
-- **Retry-from-step re-runs steps N and later:** intermediate steps must be safe against prior partial state (extract always removes first; install-service always daemon-reloads; wait-ready polls fresh).
-
-# Tarball Path Resolution
-`defaultTarballPath(version)` looks in this order:
-1. `process.resourcesPath/switchboard-daemon-<version>-linux-x64.tar.gz` (packaged AppImage — asar-adjacent, if we choose to include it in the packaged build).
-2. `<appPath>/../../release/…` (dev).
-3. `process.cwd()/release/…` (fallback).
-
-If none exist, `uploadTarball` throws with the resolved path in the error message.
+- **Retry-from-step re-runs steps N and later:** intermediate steps must be safe against prior partial state (extract always removes first; install-service always daemon-reloads; wait-ready polls fresh; cert install uses `install -m` which overwrites atomically).
 
 # Test Strategy
 Unit tests in `tests/main/remote-provisioner.test.ts` (Vitest):
 - **State-machine sequencing:** stub `ssh-client` returns success for every call; verify all 10 steps run in order and end `done`.
-- **Cancellation:** cancel during step 4; verify subsequent steps are not executed and the current step's status is not clobbered by an implicit "done".
-- **Retry-from-step:** run through step 6, inject a step-7 failure, call `run('wait-ready')`; verify steps 1-6 are not re-executed and step 7 runs fresh.
-- **Probe validation:** malformed probe output (non-absolute $HOME, systemctl offline) each throw with the specific error message.
+- **Cancellation:** cancel during step 4; verify subsequent steps are not executed and the current step's status is not clobbered.
+- **Retry-from-step:** run through step 6, inject a step-7 failure, call `run('install-service')`; verify steps 1-6 are not re-executed and step 7 runs fresh.
+- **Probe validation:** malformed probe output (non-absolute `$HOME`, systemctl offline, missing `uname -m` line) each throw with the specific error message.
+- **Arch mapping — supported:** for each of `{x86_64, aarch64, armv7l}`, verify the probe captures the correct ARCH slug and step 4 uploads the matching tarball path.
+- **Arch mapping — unsupported:** for each of `{armv6l, i686, riscv64, mips}`, verify probe throws with the reported string in the message and no later step runs.
 - **Heredoc guard:** attempting to build a unit file whose content contains `\nSB_UNIT_END\n` throws before spawning.
-- **Pairing:** stub `ConnectionManager.pair()` + `submitPairingCode()` + `onPairSuccessOnce()`; verify code is polled, submitted, and success awaited.
+- **Cert bundle — missing files:** each of `serverCertPath` / `serverKeyPath` / `caCertPath` missing causes step 5 to throw naming that specific path; no scp is attempted.
+- **Cert bundle — happy path:** verify the remote `chmod 700` + `install -m 0644/0600/0644` sequence is composed correctly.
+- **Client connect handoff:** verify step 9 calls `ConnectionManager.addAndConnect(host, port, name)` exactly once, with the values from the request.
 
 # Completion Criteria
-- Live-tested end-to-end against a fresh Ubuntu 24.04 VM (systemd --user, SSH key auth, **Node not installed**): the modal reports all 10 steps done in ~60s and the daemon appears in the sidebar as a new group.
+- Live-tested end-to-end against three fresh targets: an Ubuntu x86_64 VM, a Raspberry Pi 4 (aarch64), and a Raspberry Pi 3 (armv7l). Each modal reports all 10 steps done in ~60s and the daemon appears in the sidebar under the new group.
 - Retry-from-step is validated by hand: kill the daemon between steps 7 and 8, retry from `wait-ready`, and complete without re-uploading.
+- An unsupported target (a spare armv6l Pi Zero, or an i686 VM) fails cleanly at `probe-target` with the reported arch in the error, and no bytes reach `/tmp` on the target.
 - No orphaned files on the target after either a successful run or an explicit uninstall path (uninstall path is out of scope for v1).
