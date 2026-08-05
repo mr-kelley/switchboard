@@ -1,6 +1,6 @@
 ---
 title: Terminal Pane Component Specification
-version: 0.3.0
+version: 0.3.1
 maintained_by: claude
 domain_tags: [renderer, react, xterm, terminal]
 status: active
@@ -51,7 +51,8 @@ interface TerminalPaneProps {
 - **WebGL addon**: attached after `terminal.open()` via `tryAttachWebgl()`. Falls back to canvas renderer if the addon fails to load or attach.
 
 ## Clipboard
-- **Ctrl+Shift+C** — copy the current terminal selection to the system clipboard via `navigator.clipboard.writeText(terminal.getSelection())`. Only fires when `terminal.hasSelection()` is true; otherwise the shortcut is a no-op (but still consumed, matching gnome-terminal / konsole behavior). Plain Ctrl+C is NEVER intercepted — it always reaches the PTY as SIGINT.
+- **Ctrl+Shift+C** — copy the current terminal selection to the system clipboard via `navigator.clipboard.writeText(...)`. Detected by `event.code === 'KeyC'` (physical key, layout-independent). If no selection exists the shortcut is a no-op but still consumed, matching gnome-terminal / konsole behavior. Plain Ctrl+C is NEVER intercepted — it always reaches the PTY as SIGINT.
+- **Selection cache** — the pane subscribes to `terminal.onSelectionChange` and stores the most recent non-empty selection in a closure. The copy handler prefers `terminal.getSelection()` but falls back to the cache when it is empty. This works around xterm.js's behavior in mouse-tracking mode where TUI apps (Claude Code, tmux, vim) can drop the live selection on mouseup, leaving `getSelection()` empty at keypress time. The cache is consumed (cleared) on every copy so a stale selection cannot be re-copied. See xtermjs/xterm.js#4781 for the underlying regression class.
 - **Paste** — handled by the browser's native paste event, which xterm.js consumes automatically. No custom code path.
 - Clipboard writes that fail (e.g. window not focused, permission denied) are swallowed — the terminal remains functional and the user can retry.
 - Wired via `terminal.attachCustomKeyEventHandler`, which returns `false` for the consumed shortcut and `true` for every other keydown so xterm's default handling is preserved.

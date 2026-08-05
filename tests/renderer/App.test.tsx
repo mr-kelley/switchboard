@@ -11,6 +11,7 @@ vi.mock('@xterm/xterm', () => ({
     attachCustomKeyEventHandler: vi.fn(),
     hasSelection: vi.fn().mockReturnValue(false),
     getSelection: vi.fn().mockReturnValue(''),
+    onSelectionChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
     cols: 80, rows: 24,
     options: {},
   })),

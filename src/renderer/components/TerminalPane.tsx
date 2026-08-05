@@ -96,16 +96,27 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
     // Linux-terminal convention — plain Ctrl+C stays reserved for SIGINT).
     // Paste (Ctrl+Shift+V) is handled by the browser's default paste event,
     // which xterm.js consumes automatically.
+    //
+    // The selection is cached via onSelectionChange because TUI apps with
+    // mouse tracking (Claude Code, tmux, vim) can drop the live selection
+    // on mouseup, so terminal.getSelection() is empty by the time the user
+    // presses the copy shortcut. See xtermjs/xterm.js#4781.
+    let lastSelection = '';
+    const selectionSubscription = terminal.onSelectionChange(() => {
+      const current = terminal.getSelection();
+      if (current.length > 0) lastSelection = current;
+    });
+
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true;
-      if (event.ctrlKey && event.shiftKey && (event.key === 'C' || event.key === 'c')) {
-        if (terminal.hasSelection()) {
-          navigator.clipboard.writeText(terminal.getSelection()).catch(() => {
-            // Clipboard write can fail if the window isn't focused; fall
-            // back to Electron's clipboard via the preload bridge if the
-            // renderer path is blocked. For now, swallow — user can retry.
+      if (event.ctrlKey && event.shiftKey && event.code === 'KeyC') {
+        const text = terminal.getSelection() || lastSelection;
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {
+            // Clipboard write can fail if the window isn't focused; swallow.
           });
         }
+        lastSelection = '';
         return false;
       }
       return true;
@@ -165,6 +176,7 @@ export default function TerminalPane({ sessionId, visible, searchVisible, onSear
     return () => {
       window.removeEventListener('resize', handleResize);
       unsubData();
+      selectionSubscription.dispose();
       terminal.dispose();
     };
   }, [sessionId, !!prefs.terminalBackgroundImage]);
