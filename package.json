@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.5.0-rc.12",
+  "version": "0.5.0-rc.13",
   "description": "A Slack-style multi-session terminal manager for AI coding workflows",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -50,7 +50,7 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "release/switchboard-daemon.tar.gz", "to": "switchboard-daemon.tar.gz" }
+      { "from": "release/", "filter": ["switchboard-daemon-linux-*.tar.gz"] }
     ],
     "extraMetadata": {
       "main": "dist/main/main/main.js"

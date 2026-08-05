@@ -4,7 +4,7 @@ import { ConnectionManager, type DaemonConnectionConfig } from './connection-man
 import type { LocalDaemon } from './local-daemon';
 import * as systemd from './systemd-installer';
 import * as desktopInstall from './desktop-install';
-import { RemoteProvisioner, defaultTarballPath, type StepId } from './remote-provisioner';
+import { RemoteProvisioner, type StepId } from './remote-provisioner';
 import type { RemoteProvisionRequest } from '../shared/types';
 import type { SwitchboardPreferences, NotificationPriority } from '../shared/types';
 
@@ -230,9 +230,8 @@ export function registerIpcHandlers(
     if (activeProvisioner) {
       throw new Error('A provisioning attempt is already in progress. Cancel it first.');
     }
-    const tarballPath = defaultTarballPath(app.getVersion());
     activeProvisioner = new RemoteProvisioner(
-      { ...req, tarballPath, daemonPort: req.daemonPort || 3717 },
+      { ...req, appVersion: app.getVersion(), daemonPort: req.daemonPort || 3717 },
       connectionManager,
       (state) => broadcast('remoteProvisioner:progress', state),
     );

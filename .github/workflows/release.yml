@@ -1,0 +1,141 @@
+name: release
+
+# Fires on version tags to produce a multi-arch release; workflow_dispatch
+# lets you smoke-test the pipeline without publishing (the `release` job
+# only runs on tag pushes).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # One job per supported target arch. x64 builds natively; arm arches build
+  # inside a Docker container with QEMU registered, so node-pty compiles for
+  # the target ABI and the tarball script sees the right `file` magic.
+  #
+  # Adding an arch: extend the matrix + the ARCH_TABLE in remote-provisioner.ts
+  # + the DEC. See DEC-000012.
+  # ---------------------------------------------------------------------------
+  build-tarball:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: linux-x64
+            docker_platform: ''
+          - arch: linux-arm64
+            docker_platform: linux/arm64
+          - arch: linux-armv7l
+            docker_platform: linux/arm/v7
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (host)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up QEMU (for cross-arch container builds)
+        if: matrix.docker_platform != ''
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build tarball (native x64)
+        if: matrix.docker_platform == ''
+        run: |
+          npm install
+          npm run build:daemon
+          ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh
+
+      - name: Build tarball (emulated arm)
+        if: matrix.docker_platform != ''
+        run: |
+          # Run npm install + build inside a matching-arch container so
+          # node-pty compiles for the target ABI. The tarball script then
+          # downloads the arch-matched Node binary from nodejs.org.
+          docker run --rm --platform ${{ matrix.docker_platform }} \
+            -v "${{ github.workspace }}:/work" -w /work \
+            node:20-bookworm \
+            bash -c "npm install && npm run build:daemon && ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh"
+
+      - name: Verify tarball
+        run: |
+          ls -lh release/switchboard-daemon-*-${{ matrix.arch }}.tar.gz
+          ls -lh release/switchboard-daemon-${{ matrix.arch }}.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switchboard-daemon-${{ matrix.arch }}
+          path: |
+            release/switchboard-daemon-*-${{ matrix.arch }}.tar.gz
+            release/switchboard-daemon-${{ matrix.arch }}.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Assemble the Linux AppImage with all three tarballs bundled as
+  # extraResources. This job never runs the tarball build script — it only
+  # consumes the artifacts produced above.
+  # ---------------------------------------------------------------------------
+  build-appimage:
+    needs: build-tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download all tarball artifacts into release/
+        uses: actions/download-artifact@v4
+        with:
+          path: release/
+          pattern: switchboard-daemon-*
+          merge-multiple: true
+
+      - name: Show release/ contents
+        run: ls -lh release/
+
+      - name: Build client
+        run: |
+          npm install
+          npm run build:renderer
+          npm run build:main
+          npx electron-builder --linux AppImage --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switchboard-appimage
+          path: release/Switchboard-*.AppImage
+
+  # ---------------------------------------------------------------------------
+  # Only on a tag push: attach all tarballs + the AppImage to a GitHub
+  # Release. Skipped on workflow_dispatch runs so smoke tests don't publish.
+  # ---------------------------------------------------------------------------
+  release:
+    needs: build-appimage
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lh dist/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          # Only the versioned filenames — the stable-name mirrors are an
+          # internal packaging detail (electron-builder's extraResources), not
+          # a user-facing artifact.
+          files: |
+            dist/switchboard-daemon-*-*.tar.gz
+            dist/Switchboard-*.AppImage
+          fail_on_unmatched_files: true
+          generate_release_notes: true
