@@ -1,0 +1,84 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000012",
+  "ts": "2026-08-05T10:00:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude",
+  "decision_class": "A",
+  "title": "Multi-arch daemon tarballs (linux-x64/arm64/armv7l); GitHub Actions matrix build; arch-detected remote provisioning",
+  "decision": "The daemon tarball built by `scripts/build-daemon-tarball.sh` is now parameterized on `ARCH` and produced once per supported arch — `linux-x64`, `linux-arm64` (aarch64), and `linux-armv7l` (armhf) — as `switchboard-daemon-${VERSION}-${ARCH}.tar.gz`. All three tarballs ship inside the AppImage as `extraResources`. `RemoteProvisioner.probeTarget` reads `uname -m` on the target during the probe step, maps it to the matching tarball via a fixed table (`x86_64`→`linux-x64`, `aarch64`→`linux-arm64`, `armv7l`→`linux-armv7l`), and uploads only that one. Unsupported arches (armv6l, i686, riscv64, anything else) fail-closed at probe time with a specific error naming the reported machine string; the provisioner does not attempt a fallback. Release-time cross-arch builds run on GitHub Actions using a matrix strategy — one job per arch. armv6 (Pi Zero / original Pi) is explicitly out of scope for v1; a future decision can revisit once processor/RAM viability under the daemon workload is studied. Governed by `specs/scripts/build-daemon-tarball-spec.md` and the amended `specs/src/main/remote-provisioner-spec.md`.",
+  "context": {
+    "task_description": "The operator's lab includes critical Raspberry Pi infrastructure (Pi 2 through Pi 5) that must run the daemon. rc.12 shipped x86_64-only, and the daemon fails immediately on Pi hosts with `exec format error` (status=203/EXEC) because both the bundled Node runtime and the native `node-pty` prebuild are linux-x64. DEC-000009 pinned bundled Node as the sole runtime — no system-Node fallback — which is correct but locked in a single-arch assumption that this decision now generalizes across the arches the operator actually deploys. The next phase of lab evolution assumes daemons run on the Pi fleet, so this is a hard prerequisite.",
+    "assumptions": [
+      "GitHub Actions has native or QEMU-backed runners suitable for cross-arch node-pty prebuild (arm64 GHA runners are now available; armv7l requires QEMU + cross-toolchain).",
+      "The AppImage size cost of bundling three arches (~150 MB total, up from ~50 MB) is acceptable — DEC-000009 already accepted the single-arch bundle cost as a `one-time-per-host upload`; multiplying it 3x on the client side is a client-disk cost the operator has explicitly approved.",
+      "Pi Zero / original Pi (armv6l) is not in the daemon fleet's target workload for v1; the operator has flagged this as a longer-term study, not a shipping requirement.",
+      "`uname -m` output is stable across the Raspberry Pi OS variants the operator runs; there is no ambiguity like `armhf` vs `armv7l` in the strings we key on."
+    ],
+    "spec_refs": [
+      "scripts/build-daemon-tarball.sh",
+      "specs/src/main/remote-provisioner-spec.md",
+      "specs/scripts/build-daemon-tarball-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["packaging", "distribution", "remote-provisioning", "ci", "native-modules"],
+    "paths": [
+      "scripts/build-daemon-tarball.sh",
+      ".github/workflows/release.yml",
+      "src/main/remote-provisioner.ts",
+      "package.json",
+      "specs/scripts/build-daemon-tarball-spec.md",
+      "specs/src/main/remote-provisioner-spec.md",
+      "tests/main/remote-provisioner.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Multi-arch matrix on GitHub Actions, bundle all three in AppImage, arch-detected upload (chosen)",
+      "chosen": true,
+      "description": "Parameterize the tarball script on ARCH; run the CI matrix on release; ship all three inside the AppImage; provisioner probes uname -m and uploads only the matching tarball. Preserves DEC-000009's `no network at provision time` property (all tarballs are already on the client). Zero waste on the target host (only its matching tarball is transferred). CI complexity is bounded — one workflow, one matrix key."
+    },
+    {
+      "id": "B",
+      "label": "Cross-compile everything locally via Docker + QEMU buildx",
+      "chosen": false,
+      "description": "Runs the whole build on the operator's x86 machine using `docker buildx` with `--platform=linux/arm64,linux/arm/v7`. Portable, no CI dependency. Rejected: QEMU emulates ARM instruction-by-instruction, making arm-builds 10-30x slower than native; adds a local docker-daemon prerequisite; obscures build failures behind an emulation layer that only bites at build time. GHA gets the same result faster and closer to a reproducible release path."
+    },
+    {
+      "id": "C",
+      "label": "Fetch the right tarball on demand from GitHub Releases at provision time",
+      "chosen": false,
+      "description": "Smaller AppImage (only ships the client's own arch or nothing); provisioner downloads the target tarball at probe time. Rejected: breaks DEC-000009's `no runtime deps on target` posture — the client machine now needs internet access at every provision, and GH Releases must be reachable from wherever the operator is provisioning from. Also adds a version-negotiation surface (which release, which asset naming convention) with no benefit the bundle model doesn't have."
+    },
+    {
+      "id": "D",
+      "label": "Include armv6l (Pi Zero / Pi 1) in the matrix",
+      "chosen": false,
+      "description": "Official Node dropped armv6l builds after v12; supporting it requires unofficial-builds.nodejs.org or a bespoke cross-compile. Rejected for v1: the operator has flagged that Pi Zero/1 CPU + RAM viability under the daemon workload has not been established, so shipping a broken-in-practice binary would be false capability. A future decision can add it once the viability question is answered."
+    }
+  ],
+  "rationale": "Option A is the shape that unlocks the Pi fleet in the smallest possible change: three parameterized build jobs replace one, the provisioner grows one probe-line + one lookup table, and the AppImage grows ~100 MB. It preserves every property that DEC-000009 established (offline provisioning, ABI-matched bundled runtime, no target-side dependencies) and generalizes them from `one arch` to `three arches` — nothing about the client-server contract changes. The rejected options each optimize a dimension that isn't a bottleneck: Option B optimizes local build portability at the cost of speed and reproducibility (CI is the right home for release builds); Option C optimizes AppImage size at the cost of the offline-provisioning invariant; Option D chases coverage on hardware whose viability isn't proven, spending complexity on a capability that might not work.",
+  "risk": {
+    "level": "medium",
+    "reversibility": "medium",
+    "rollback": "Revert to the single-arch build (ARCH=linux-x64 default in the script; drop the matrix job; drop the multi-arch extraResources glob; drop the probe-time arch selection in remote-provisioner.ts). The provisioner would default the tarball choice to linux-x64 as before. Any Pi hosts provisioned during the multi-arch period would need to be torn down and reprovisioned once support returns."
+  },
+  "links": {
+    "issues": [],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "specs/scripts/build-daemon-tarball-spec.md",
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: (1) three tarballs are produced on `npm run dist:appimage` (or the equivalent CI job) with correct arch magic in `file bin/node`; (2) provisioning a Pi 4 (aarch64) succeeds end-to-end with the arm64 tarball selected; (3) provisioning a Pi 3 (armv7l) succeeds end-to-end with the armv7l tarball selected; (4) provisioning an unsupported target (i686 or armv6l) fails at probe time with the reported uname -m in the error message; (5) x86_64 hosts remain unaffected — their upload behavior is byte-identical to rc.12."
+  },
+  "tags": ["packaging", "daemon", "distribution", "arm", "raspberry-pi", "multi-arch", "ci", "github-actions", "sprint-24"]
+}
