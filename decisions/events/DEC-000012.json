@@ -68,7 +68,7 @@
   },
   "links": {
     "issues": [],
-    "prs": [],
+    "prs": [56, 57, 58],
     "supersedes": [],
     "files": [
       "specs/scripts/build-daemon-tarball-spec.md",
@@ -76,9 +76,13 @@
     ]
   },
   "outcome": {
-    "status": "pending",
-    "verified_by": [],
-    "notes": "Verification: (1) three tarballs are produced on `npm run dist:appimage` (or the equivalent CI job) with correct arch magic in `file bin/node`; (2) provisioning a Pi 4 (aarch64) succeeds end-to-end with the arm64 tarball selected; (3) provisioning a Pi 3 (armv7l) succeeds end-to-end with the armv7l tarball selected; (4) provisioning an unsupported target (i686 or armv6l) fails at probe time with the reported uname -m in the error message; (5) x86_64 hosts remain unaffected — their upload behavior is byte-identical to rc.12."
+    "status": "verified",
+    "verified_by": [
+      "CI run 31012992062 on main@d7e9588 (workflow_dispatch): matrix produced all three tarballs, build-appimage assembled the multi-arch AppImage, release job self-suppressed correctly.",
+      "Operator manual test on 2026-08-05 across four hosts spanning all three arches — local x86_64 VM, cloud0 (physical x86_64), ca0.tallship (Pi 3, armv7l), dns.tallship (Pi 4, aarch64) — one session per host, all provisioned via the same client AppImage.",
+      "Unit test coverage (#63): 356/356 pass, including 9 new cases for arch mapping + fail-closed on four sample unsupported arches; behavioral fail-closed on real armv6l hardware not yet demonstrated (deferred pending Pi Zero viability study per DEC-000012 Option D)."
+    ],
+    "notes": "Verification list from the original decision, for reference: (1) three tarballs are produced on `npm run dist:appimage` (or the equivalent CI job) with correct arch magic in `file bin/node`; (2) provisioning a Pi 4 (aarch64) succeeds end-to-end with the arm64 tarball selected; (3) provisioning a Pi 3 (armv7l) succeeds end-to-end with the armv7l tarball selected; (4) provisioning an unsupported target (i686 or armv6l) fails at probe time with the reported uname -m in the error message; (5) x86_64 hosts remain unaffected — their upload behavior is byte-identical to rc.12. Items 1, 2, 3, 5 verified in production; item 4 verified in unit tests only."
   },
   "tags": ["packaging", "daemon", "distribution", "arm", "raspberry-pi", "multi-arch", "ci", "github-actions", "sprint-24"]
 }
