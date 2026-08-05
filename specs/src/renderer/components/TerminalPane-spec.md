@@ -1,6 +1,6 @@
 ---
 title: Terminal Pane Component Specification
-version: 0.2.0
+version: 0.3.0
 maintained_by: claude
 domain_tags: [renderer, react, xterm, terminal]
 status: active
@@ -49,6 +49,12 @@ interface TerminalPaneProps {
 - **FitAddon**: auto-resize terminal to fill container. Guarded against fit errors during layout transitions.
 - **WebLinksAddon**: clickable URLs in terminal output.
 - **WebGL addon**: attached after `terminal.open()` via `tryAttachWebgl()`. Falls back to canvas renderer if the addon fails to load or attach.
+
+## Clipboard
+- **Ctrl+Shift+C** — copy the current terminal selection to the system clipboard via `navigator.clipboard.writeText(terminal.getSelection())`. Only fires when `terminal.hasSelection()` is true; otherwise the shortcut is a no-op (but still consumed, matching gnome-terminal / konsole behavior). Plain Ctrl+C is NEVER intercepted — it always reaches the PTY as SIGINT.
+- **Paste** — handled by the browser's native paste event, which xterm.js consumes automatically. No custom code path.
+- Clipboard writes that fail (e.g. window not focused, permission denied) are swallowed — the terminal remains functional and the user can retry.
+- Wired via `terminal.attachCustomKeyEventHandler`, which returns `false` for the consumed shortcut and `true` for every other keydown so xterm's default handling is preserved.
 
 ## WebGL Context Loss Recovery
 - `tryAttachWebgl()` registers an `onContextLoss` callback on the WebGL addon. When a WebGL context loss event fires, the callback disposes the WebGL addon (xterm automatically falls back to its built-in canvas renderer).

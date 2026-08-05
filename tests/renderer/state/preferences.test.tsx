@@ -8,7 +8,11 @@ vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn().mockImplementation(() => ({
     loadAddon: vi.fn(), open: vi.fn(), write: vi.fn(),
     onData: vi.fn().mockReturnValue({ dispose: vi.fn() }),
-    dispose: vi.fn(), focus: vi.fn(), cols: 80, rows: 24,
+    dispose: vi.fn(), focus: vi.fn(),
+    attachCustomKeyEventHandler: vi.fn(),
+    hasSelection: vi.fn().mockReturnValue(false),
+    getSelection: vi.fn().mockReturnValue(''),
+    cols: 80, rows: 24,
   })),
 }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: vi.fn().mockImplementation(() => ({ fit: vi.fn(), dispose: vi.fn() })) }));
