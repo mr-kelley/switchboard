@@ -1,148 +1,147 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { WebSocket } from 'ws';
 import { TransportServer } from '../../src/daemon/transport';
-import { initConfig, getCertFingerprint } from '../../src/daemon/config';
-import { serializeMessage, deserializeMessage, type DaemonMessage } from '../../src/shared/protocol';
+import { serializeMessage, deserializeMessage, type ClientMessage, type DaemonMessage } from '../../src/shared/protocol';
 
-describe('TransportServer', () => {
-  let tmpDir: string;
+/**
+ * Transport tests are now mTLS-only. The fixtures under `tests/fixtures/tls/`
+ * back both a trusted client (SAN=switchboard-test-client.example.internal,
+ * signed by the fixture lab CA) and an unauthorized client signed by a
+ * different CA — used to prove the daemon rejects unrelated chains.
+ */
+
+const FIXTURES = path.join(__dirname, '..', 'fixtures', 'tls');
+
+function readPem(name: string): string {
+  return fs.readFileSync(path.join(FIXTURES, name), 'utf-8');
+}
+
+describe('TransportServer (mTLS)', () => {
   let server: TransportServer;
-  let token: string;
   let port: number;
-  let certPath: string;
+  const received: ClientMessage[] = [];
 
   beforeAll(async () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-transport-'));
-    const config = initConfig(tmpDir, path.join(tmpDir, 'daemon.json'));
-    token = config.auth.token;
-    certPath = config.tls.cert;
-    // Use a random high port
     port = 30000 + Math.floor(Math.random() * 10000);
-
-    const messages: any[] = [];
     server = new TransportServer(
       {
         port,
         host: '127.0.0.1',
-        tls: { cert: config.tls.cert, key: config.tls.key },
-        token,
+        tls: {
+          cert: readPem('server.crt'),
+          key: readPem('server.key'),
+          ca: readPem('ca.crt'),
+        },
         daemonId: 'test-daemon',
         hostname: 'test-host',
         version: '0.0.1',
       },
-      (conn, msg) => {
-        messages.push(msg);
-        // Echo back for testing
-        if (msg.type === 'session:list') {
-          server.send(conn.id, { type: 'session:list', sessions: [] });
-        }
-      }
+      (_conn, msg) => { received.push(msg); },
     );
-
     await server.start();
   });
 
   afterAll(async () => {
     await server.stop();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function connectWs(): Promise<WebSocket> {
+  function connectAuthorized(): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`wss://127.0.0.1:${port}`, {
-        rejectUnauthorized: false, // Self-signed cert
+        cert: readPem('client.crt'),
+        key: readPem('client.key'),
+        ca: readPem('ca.crt'),
       });
       ws.on('open', () => resolve(ws));
       ws.on('error', reject);
     });
   }
 
-  function sendAndReceive(ws: WebSocket, msg: object): Promise<DaemonMessage> {
-    return new Promise((resolve) => {
-      ws.once('message', (data) => {
-        resolve(deserializeMessage(data.toString()) as DaemonMessage);
+  function awaitMessage(ws: WebSocket): Promise<DaemonMessage> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('message timeout')), 3000);
+      ws.once('message', (raw) => {
+        clearTimeout(timer);
+        try {
+          resolve(deserializeMessage(raw.toString()) as DaemonMessage);
+        } catch (err) {
+          reject(err);
+        }
       });
-      ws.send(JSON.stringify(msg));
     });
   }
 
-  it('accepts a connection and authenticates with valid token', async () => {
-    const ws = await connectWs();
-    const response = await sendAndReceive(ws, { type: 'auth', seq: 1, token });
-    expect(response.type).toBe('auth:ok');
-    expect((response as any).daemonId).toBe('test-daemon');
-    expect((response as any).hostname).toBe('test-host');
+  it('sends an unsolicited auth:ok metadata message on connect', async () => {
+    const ws = await connectAuthorized();
+    const msg = await awaitMessage(ws);
+    expect(msg.type).toBe('auth:ok');
+    if (msg.type === 'auth:ok') {
+      expect(msg.daemonId).toBe('test-daemon');
+      expect(msg.hostname).toBe('test-host');
+      expect(msg.version).toBe('0.0.1');
+    }
     ws.close();
   });
 
-  it('rejects authentication with invalid token', async () => {
-    const ws = await connectWs();
-    const response = await sendAndReceive(ws, { type: 'auth', seq: 1, token: 'wrong-token' });
-    expect(response.type).toBe('auth:fail');
-    await new Promise((r) => setTimeout(r, 300)); // Wait for close
+  it('routes app messages through the message handler after handshake', async () => {
+    const before = received.length;
+    const ws = await connectAuthorized();
+    await awaitMessage(ws); // consume unsolicited auth:ok
+    ws.send(serializeMessage({ type: 'session:list', seq: 1 } as ClientMessage));
+    // Give the router a moment to process.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(received.length).toBeGreaterThan(before);
+    expect(received[received.length - 1].type).toBe('session:list');
     ws.close();
   });
 
-  it('rejects non-auth messages before authentication', async () => {
-    const ws = await connectWs();
-    const response = await sendAndReceive(ws, { type: 'session:list', seq: 1 });
-    expect(response.type).toBe('auth:fail');
+  it('answers ping with pong on the transport itself (no handler invoked)', async () => {
+    const ws = await connectAuthorized();
+    await awaitMessage(ws); // consume auth:ok
+    ws.send(serializeMessage({ type: 'ping', seq: 99 } as ClientMessage));
+    const reply = await awaitMessage(ws);
+    expect(reply.type).toBe('pong');
     ws.close();
   });
 
-  it('responds to ping with pong after auth', async () => {
-    const ws = await connectWs();
-    await sendAndReceive(ws, { type: 'auth', seq: 1, token });
-    const response = await sendAndReceive(ws, { type: 'ping', seq: 2 });
-    expect(response.type).toBe('pong');
-    ws.close();
-  });
-
-  it('broadcasts messages to multiple clients', async () => {
-    const ws1 = await connectWs();
-    const ws2 = await connectWs();
-
-    await sendAndReceive(ws1, { type: 'auth', seq: 1, token });
-    await sendAndReceive(ws2, { type: 'auth', seq: 1, token });
-
-    // Broadcast
-    const received: DaemonMessage[] = [];
-    const p1 = new Promise<void>((resolve) => {
-      ws1.once('message', (data) => {
-        received.push(deserializeMessage(data.toString()) as DaemonMessage);
+  it('rejects a client whose cert is signed by a different CA', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${port}`, {
+        cert: readPem('unauthorized-client.crt'),
+        key: readPem('unauthorized-client.key'),
+        ca: readPem('ca.crt'),
+      });
+      const timer = setTimeout(() => reject(new Error('expected TLS rejection did not arrive')), 3000);
+      ws.on('open', () => {
+        clearTimeout(timer);
+        ws.close();
+        reject(new Error('handshake should have failed'));
+      });
+      ws.on('error', () => {
+        clearTimeout(timer);
         resolve();
       });
     });
-    const p2 = new Promise<void>((resolve) => {
-      ws2.once('message', (data) => {
-        received.push(deserializeMessage(data.toString()) as DaemonMessage);
+  });
+
+  it('rejects a client that presents no cert', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${port}`, {
+        ca: readPem('ca.crt'),
+        // no cert / key
+      });
+      const timer = setTimeout(() => reject(new Error('expected TLS rejection did not arrive')), 3000);
+      ws.on('open', () => {
+        clearTimeout(timer);
+        ws.close();
+        reject(new Error('handshake should have failed'));
+      });
+      ws.on('error', () => {
+        clearTimeout(timer);
         resolve();
       });
     });
-
-    server.broadcast({ type: 'session:status', sessionId: 'test', status: 'idle' });
-    await Promise.all([p1, p2]);
-
-    expect(received).toHaveLength(2);
-    expect(received[0].type).toBe('session:status');
-    expect(received[1].type).toBe('session:status');
-
-    ws1.close();
-    ws2.close();
-  });
-
-  it('tracks connected count', async () => {
-    // Wait for any previous test connections to fully close
-    await new Promise((r) => setTimeout(r, 200));
-    const initial = server.getConnectedCount();
-    const ws = await connectWs();
-    await sendAndReceive(ws, { type: 'auth', seq: 1, token });
-    expect(server.getConnectedCount()).toBe(initial + 1);
-    ws.close();
-    await new Promise((r) => setTimeout(r, 200));
-    expect(server.getConnectedCount()).toBe(initial);
   });
 });

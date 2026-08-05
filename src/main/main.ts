@@ -95,7 +95,7 @@ function showMainWindow(): void {
 app.whenReady().then(async () => {
   const prefs = prefsStore.load();
   for (const conn of prefs.daemonConnections) {
-    if (conn && conn.id && conn.host && conn.port && conn.token) {
+    if (conn && conn.id && conn.host && conn.port) {
       connectionManager.addConnection(conn);
     }
   }

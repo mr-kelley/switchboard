@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vites
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as crypto from 'crypto';
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
@@ -25,20 +24,11 @@ let tmpHome: string;
 let originalHome: string | undefined;
 let originalSwitchboardHome: string | undefined;
 
-function writeDaemonConfig(): { token: string; fingerprint: string; port: number } {
+function writeDaemonConfig(): { port: number } {
   const sbDir = path.join(tmpHome, '.switchboard');
   fs.mkdirSync(sbDir, { recursive: true });
-  const certPath = path.join(sbDir, 'cert.pem');
-  fs.writeFileSync(certPath, '-----BEGIN CERT-----\nstub\n-----END CERT-----\n');
-  const token = 'test-token-xyz';
-  const fingerprint = crypto.createHash('sha256').update(fs.readFileSync(certPath, 'utf-8')).digest('hex');
-  const cfg = {
-    port: 3717,
-    auth: { token },
-    tls: { cert: certPath, key: certPath },
-  };
-  fs.writeFileSync(path.join(sbDir, 'daemon.json'), JSON.stringify(cfg));
-  return { token, fingerprint, port: 3717 };
+  fs.writeFileSync(path.join(sbDir, 'daemon.json'), JSON.stringify({ port: 3717 }));
+  return { port: 3717 };
 }
 
 beforeEach(() => {
@@ -84,7 +74,7 @@ describe('LocalDaemon service-detection branch', () => {
     expect(config.id).toBe('localhost');
     expect(config.host).toBe('127.0.0.1');
     expect(config.port).toBe(3717);
-    expect(config.token).toBe('test-token-xyz');
+    // token/fingerprint no longer part of DaemonConnectionConfig (DEC-000010)
   });
 
   it('stop() does not signal child when service-managed', async () => {

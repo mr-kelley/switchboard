@@ -25,11 +25,6 @@ export interface SessionInfo {
 
 // --- Client → Daemon ---
 
-export interface AuthMessage extends BaseMessage {
-  type: 'auth';
-  token: string;
-}
-
 export interface SessionSpawnMessage extends BaseMessage {
   type: 'session:spawn';
   name: string;
@@ -69,16 +64,6 @@ export interface PingMessage extends BaseMessage {
   type: 'ping';
 }
 
-export interface PairRequestMessage extends BaseMessage {
-  type: 'pair:request';
-  clientName: string;
-}
-
-export interface PairResponseMessage extends BaseMessage {
-  type: 'pair:response';
-  code: string;
-}
-
 export interface SessionQueuePromptMessage extends BaseMessage {
   type: 'session:queue-prompt';
   sessionId: string;
@@ -96,7 +81,6 @@ export interface SessionReplayRequestMessage extends BaseMessage {
 }
 
 export type ClientMessage =
-  | AuthMessage
   | SessionSpawnMessage
   | SessionInputMessage
   | SessionResizeMessage
@@ -104,24 +88,23 @@ export type ClientMessage =
   | SessionRenameMessage
   | SessionListRequestMessage
   | PingMessage
-  | PairRequestMessage
-  | PairResponseMessage
   | SessionQueuePromptMessage
   | SessionClearQueueMessage
   | SessionReplayRequestMessage;
 
 // --- Daemon → Client ---
 
+/**
+ * Sent unsolicited by the daemon immediately after a client's mTLS handshake
+ * completes. Kept as `auth:ok` for wire-compat with the (now non-existent)
+ * bearer-token flow that used the same message shape. No authentication is
+ * performed at this layer post-DEC-000010 — TLS is the auth boundary.
+ */
 export interface AuthOkMessage extends BaseMessage {
   type: 'auth:ok';
   daemonId: string;
   hostname: string;
   version: string;
-}
-
-export interface AuthFailMessage extends BaseMessage {
-  type: 'auth:fail';
-  reason: string;
 }
 
 export interface SessionCreatedMessage extends BaseMessage {
@@ -192,25 +175,6 @@ export interface PongMessage extends BaseMessage {
   type: 'pong';
 }
 
-export interface PairChallengeMessage extends BaseMessage {
-  type: 'pair:challenge';
-  daemonName: string;
-  hostname: string;
-}
-
-export interface PairTokenMessage extends BaseMessage {
-  type: 'pair:token';
-  token: string;
-  daemonId: string;
-  hostname: string;
-  fingerprint: string;
-}
-
-export interface PairFailMessage extends BaseMessage {
-  type: 'pair:fail';
-  reason: string;
-}
-
 export interface ErrorMessage extends BaseMessage {
   type: 'error';
   code: string;
@@ -220,7 +184,6 @@ export interface ErrorMessage extends BaseMessage {
 
 export type DaemonMessage =
   | AuthOkMessage
-  | AuthFailMessage
   | SessionCreatedMessage
   | SessionClosedMessage
   | SessionDataMessage
@@ -233,9 +196,6 @@ export type DaemonMessage =
   | ReplayDataMessage
   | ReplayEndMessage
   | PongMessage
-  | PairChallengeMessage
-  | PairTokenMessage
-  | PairFailMessage
   | ErrorMessage;
 
 // --- Serialization ---

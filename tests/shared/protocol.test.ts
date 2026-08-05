@@ -3,7 +3,7 @@ import {
   serializeMessage,
   deserializeMessage,
   SequenceCounter,
-  type AuthMessage,
+  type PingMessage,
   type SessionDataMessage,
   type SessionListMessage,
   type ErrorMessage,
@@ -12,12 +12,11 @@ import {
 describe('protocol', () => {
   describe('serializeMessage', () => {
     it('serializes a message to JSON', () => {
-      const msg: AuthMessage = { type: 'auth', seq: 1, token: 'abc123' };
+      const msg: PingMessage = { type: 'ping', seq: 1 };
       const json = serializeMessage(msg);
       const parsed = JSON.parse(json);
-      expect(parsed.type).toBe('auth');
+      expect(parsed.type).toBe('ping');
       expect(parsed.seq).toBe(1);
-      expect(parsed.token).toBe('abc123');
     });
 
     it('serializes complex messages with nested objects', () => {

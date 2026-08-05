@@ -1,69 +1,65 @@
 import * as https from 'https';
-import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import type { TLSSocket, PeerCertificate } from 'tls';
 import { WebSocketServer, WebSocket } from 'ws';
-import { validateToken } from './auth';
 import {
   serializeMessage,
   deserializeMessage,
   SequenceCounter,
   type BaseMessage,
   type ClientMessage,
-  type DaemonMessage,
-  type SessionInfo,
 } from '../shared/protocol';
 
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
-const AUTH_TIMEOUT_MS = 5_000;
-
-// Persist the current pairing code to a well-known file so remote-provisioning
-// clients can retrieve it over SSH without parsing systemd journal output.
-// Written on pair:request, removed on pair:response (success/fail) or timeout.
-function pairingCodeFilePath(): string {
-  const dataDir = process.env.SWITCHBOARD_HOME || path.join(os.homedir(), '.switchboard');
-  return path.join(dataDir, 'pairing-code.txt');
-}
-function writePairingCodeFile(code: string): void {
-  try {
-    const p = pairingCodeFilePath();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, code, { mode: 0o600 });
-  } catch (err) {
-    console.error('pairing-code file write failed:', err);
-  }
-}
-function unlinkPairingCodeFile(): void {
-  try { fs.unlinkSync(pairingCodeFilePath()); } catch { /* not present */ }
-}
 
 export interface TransportConfig {
   port: number;
   host: string;
   tls: {
+    /** Server cert PEM. */
     cert: string;
+    /** Server key PEM. */
     key: string;
+    /** Lab CA root PEM (trust anchor for client-cert validation). */
+    ca: string;
   };
-  token: string;
   daemonId: string;
   hostname: string;
   version: string;
-  fingerprint: string;
 }
 
 export interface ClientConnection {
   id: string;
   ws: WebSocket;
-  authenticated: boolean;
   seq: SequenceCounter;
   lastPong: number;
   lastClientSeq: number;
-  pairingCode: string | null;
+  /**
+   * SAN DNS FQDN extracted from the peer client certificate at handshake
+   * completion. Load-bearing for per-message authorization (see
+   * `specs/src/daemon/inject-api-spec.md`). Never null on an established
+   * connection — the TLS layer rejects unauthenticated peers before we get
+   * here.
+   */
+  clientIdentity: string;
 }
 
 export type MessageHandler = (conn: ClientConnection, msg: ClientMessage) => void;
+
+/**
+ * Extract the first SAN DNS entry from a peer certificate. Returns the
+ * empty string if none is present — callers should treat that as a
+ * misconfigured client cert and reject.
+ */
+function extractSanDns(cert: PeerCertificate): string {
+  const san = (cert as { subjectaltname?: string }).subjectaltname;
+  if (!san) return '';
+  for (const entry of san.split(',')) {
+    const trimmed = entry.trim();
+    if (trimmed.startsWith('DNS:')) return trimmed.slice(4);
+  }
+  return '';
+}
 
 export class TransportServer {
   private server: https.Server | null = null;
@@ -92,15 +88,16 @@ export class TransportServer {
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tlsOptions = {
-          cert: fs.readFileSync(this.config.tls.cert, 'utf-8'),
-          key: fs.readFileSync(this.config.tls.key, 'utf-8'),
-        };
-
-        this.server = https.createServer(tlsOptions);
+        this.server = https.createServer({
+          cert: this.config.tls.cert,
+          key: this.config.tls.key,
+          ca: this.config.tls.ca,
+          requestCert: true,
+          rejectUnauthorized: true,
+        });
         this.wss = new WebSocketServer({ server: this.server });
 
-        this.wss.on('connection', (ws) => this.handleConnection(ws));
+        this.wss.on('connection', (ws, req) => this.handleConnection(ws, req.socket as TLSSocket));
 
         this.server.listen(this.config.port, this.config.host, () => {
           this.startPingInterval();
@@ -108,6 +105,12 @@ export class TransportServer {
         });
 
         this.server.on('error', reject);
+        // Log TLS handshake failures loudly — otherwise they're silent on the
+        // daemon side and clients get an opaque disconnect.
+        this.server.on('tlsClientError', (err: Error, socket: TLSSocket) => {
+          const peer = socket.remoteAddress ?? 'unknown';
+          console.warn(`[tls] client from ${peer} rejected: ${err.message}`);
+        });
       } catch (err) {
         reject(err);
       }
@@ -121,7 +124,6 @@ export class TransportServer {
         this.pingInterval = null;
       }
 
-      // Close all connections
       for (const conn of this.connections.values()) {
         try {
           conn.ws.close(1001, 'Server shutting down');
@@ -145,9 +147,6 @@ export class TransportServer {
     });
   }
 
-  /**
-   * Send a message to a specific client. The seq field is added automatically.
-   */
   send(connId: string, msg: { type: string; [key: string]: unknown }): void {
     const conn = this.connections.get(connId);
     if (!conn || conn.ws.readyState !== WebSocket.OPEN) return;
@@ -155,12 +154,9 @@ export class TransportServer {
     conn.ws.send(serializeMessage(full as BaseMessage));
   }
 
-  /**
-   * Broadcast a message to all authenticated clients.
-   */
   broadcast(msg: { type: string; [key: string]: unknown }): void {
     for (const conn of this.connections.values()) {
-      if (conn.authenticated && conn.ws.readyState === WebSocket.OPEN) {
+      if (conn.ws.readyState === WebSocket.OPEN) {
         const full = { ...msg, seq: conn.seq.next() };
         conn.ws.send(serializeMessage(full as BaseMessage));
       }
@@ -168,56 +164,51 @@ export class TransportServer {
   }
 
   getConnectedCount(): number {
-    let count = 0;
-    for (const conn of this.connections.values()) {
-      if (conn.authenticated) count++;
-    }
-    return count;
+    return this.connections.size;
   }
 
-  private handleConnection(ws: WebSocket): void {
+  private handleConnection(ws: WebSocket, socket: TLSSocket): void {
+    const cert = socket.getPeerCertificate(true);
+    const identity = extractSanDns(cert);
+
+    // `requestCert:true` + `rejectUnauthorized:true` should mean no peer ever
+    // reaches this callback without a validated client cert. Defensive check:
+    // if the identity is empty (cert has no SAN DNS entry, or peer somehow got
+    // through with no cert), close hard.
+    if (!identity) {
+      console.warn('[tls] peer connected without a usable SAN DNS identity; closing');
+      ws.close(4003, 'Missing client identity');
+      return;
+    }
+
     const connId = `conn-${++this.connCounter}`;
     const conn: ClientConnection = {
       id: connId,
       ws,
-      authenticated: false,
       seq: new SequenceCounter(),
       lastPong: Date.now(),
       lastClientSeq: 0,
-      pairingCode: null,
+      clientIdentity: identity,
     };
 
     this.connections.set(connId, conn);
+    console.log(`[conn] ${identity} connected (id=${connId})`);
 
-    // Auth timeout — disconnect if not authenticated within AUTH_TIMEOUT_MS
-    const authTimer = setTimeout(() => {
-      if (!conn.authenticated) {
-        this.send(connId, { type: 'auth:fail', reason: 'Authentication timeout' });
-        ws.close(4001, 'Auth timeout');
-      }
-    }, AUTH_TIMEOUT_MS);
+    // Unsolicited connection-metadata message so the client learns the daemon's
+    // identity + version without a challenge/response dance.
+    this.send(connId, {
+      type: 'auth:ok',
+      daemonId: this.config.daemonId,
+      hostname: this.config.hostname,
+      version: this.config.version,
+    });
+    this.onConnect?.(conn);
 
     ws.on('message', (rawData) => {
       try {
         const raw = rawData.toString();
         const msg = deserializeMessage(raw) as ClientMessage;
         conn.lastClientSeq = msg.seq;
-
-        if (!conn.authenticated) {
-          if (msg.type === 'auth') {
-            clearTimeout(authTimer);
-            this.handleAuth(conn, msg.token);
-          } else if (msg.type === 'pair:request') {
-            clearTimeout(authTimer);
-            this.handlePairRequest(conn, (msg as any).clientName || 'unknown');
-          } else if (msg.type === 'pair:response') {
-            this.handlePairResponse(conn, (msg as any).code || '');
-          } else {
-            this.send(connId, { type: 'auth:fail', reason: 'Must authenticate first' });
-            ws.close(4001, 'Not authenticated');
-          }
-          return;
-        }
 
         if (msg.type === 'ping') {
           this.send(connId, { type: 'pong' });
@@ -235,13 +226,13 @@ export class TransportServer {
     });
 
     ws.on('close', () => {
-      clearTimeout(authTimer);
       this.connections.delete(connId);
+      console.log(`[conn] ${identity} disconnected (id=${connId})`);
       this.onDisconnect?.(connId);
     });
 
-    ws.on('error', () => {
-      clearTimeout(authTimer);
+    ws.on('error', (err) => {
+      console.warn(`[conn] ${identity} error (id=${connId}): ${err.message}`);
       this.connections.delete(connId);
       this.onDisconnect?.(connId);
     });
@@ -251,101 +242,11 @@ export class TransportServer {
     });
   }
 
-  private handleAuth(conn: ClientConnection, token: string): void {
-    if (validateToken(token, this.config.token)) {
-      conn.authenticated = true;
-      this.send(conn.id, {
-        type: 'auth:ok',
-        daemonId: this.config.daemonId,
-        hostname: this.config.hostname,
-        version: this.config.version,
-      });
-      this.onConnect?.(conn);
-    } else {
-      // Brief delay to prevent timing attacks on auth failure
-      setTimeout(() => {
-        this.send(conn.id, { type: 'auth:fail', reason: 'Invalid token' });
-        conn.ws.close(4003, 'Auth failed');
-      }, 200);
-    }
-  }
-
-  private handlePairRequest(conn: ClientConnection, clientName: string): void {
-    // Generate a 6-digit pairing code
-    const code = crypto.randomInt(100000, 999999).toString();
-    conn.pairingCode = code;
-    writePairingCodeFile(code);
-
-    console.log(`\n=== PAIRING REQUEST ===`);
-    console.log(`Client "${clientName}" wants to pair.`);
-    console.log(`Pairing code: ${code}`);
-    console.log(`Enter this code in the client to complete pairing.`);
-    console.log(`======================\n`);
-
-    // Send challenge to client
-    this.send(conn.id, {
-      type: 'pair:challenge',
-      daemonName: this.config.hostname,
-      hostname: this.config.hostname,
-    });
-
-    // Timeout pairing after 60 seconds
-    setTimeout(() => {
-      if (conn.pairingCode) {
-        conn.pairingCode = null;
-        unlinkPairingCodeFile();
-        this.send(conn.id, { type: 'pair:fail', reason: 'Pairing timed out' });
-        conn.ws.close(4002, 'Pairing timeout');
-      }
-    }, 60_000);
-  }
-
-  private handlePairResponse(conn: ClientConnection, code: string): void {
-    if (!conn.pairingCode) {
-      this.send(conn.id, { type: 'pair:fail', reason: 'No pairing in progress' });
-      conn.ws.close(4002, 'No pairing');
-      return;
-    }
-
-    if (code === conn.pairingCode) {
-      conn.pairingCode = null;
-      unlinkPairingCodeFile();
-      console.log(`Pairing successful!`);
-      // Send the auth token to the client
-      this.send(conn.id, {
-        type: 'pair:token',
-        token: this.config.token,
-        daemonId: this.config.daemonId,
-        hostname: this.config.hostname,
-        fingerprint: this.config.fingerprint,
-      });
-      // Also authenticate this connection
-      conn.authenticated = true;
-      this.send(conn.id, {
-        type: 'auth:ok',
-        daemonId: this.config.daemonId,
-        hostname: this.config.hostname,
-        version: this.config.version,
-      });
-      this.onConnect?.(conn);
-    } else {
-      conn.pairingCode = null;
-      unlinkPairingCodeFile();
-      console.log(`Pairing failed — wrong code.`);
-      setTimeout(() => {
-        this.send(conn.id, { type: 'pair:fail', reason: 'Invalid pairing code' });
-        conn.ws.close(4003, 'Pairing failed');
-      }, 200);
-    }
-  }
-
   private startPingInterval(): void {
     this.pingInterval = setInterval(() => {
       const now = Date.now();
       for (const [connId, conn] of this.connections) {
-        if (!conn.authenticated) continue;
         if (now - conn.lastPong > PONG_TIMEOUT_MS) {
-          // Dead connection
           conn.ws.terminate();
           this.connections.delete(connId);
           this.onDisconnect?.(connId);

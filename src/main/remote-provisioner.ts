@@ -4,16 +4,23 @@ import { app } from 'electron';
 import * as ssh from './ssh-client';
 import type { ConnectionManager } from './connection-manager';
 
+/**
+ * Under mTLS (DEC-000010) provisioning is a straight-line install: SSH
+ * reachable → target has systemd --user → upload tarball + certs → extract
+ * → install systemd unit → wait for daemon to accept connections → done.
+ * The client then connects via the standard `connect()` path with its own
+ * cert. There is no pairing dance; TLS is the sole auth boundary.
+ */
 export type StepId =
   | 'test-connection'
   | 'probe-target'
   | 'check-existing'
   | 'upload-tarball'
+  | 'upload-certs'
   | 'extract'
   | 'install-service'
   | 'wait-ready'
-  | 'read-code'
-  | 'complete-pairing'
+  | 'connect-client'
   | 'cleanup';
 
 export type StepStatus = 'pending' | 'active' | 'done' | 'failed';
@@ -27,14 +34,29 @@ export interface StepState {
   errorDetail?: string;
 }
 
+export interface ServerCertBundle {
+  /** Absolute local path to the target's server cert (PEM). */
+  serverCertPath: string;
+  /** Absolute local path to the matching server key (PEM). */
+  serverKeyPath: string;
+  /** Absolute local path to the lab CA root cert (PEM). */
+  caCertPath: string;
+}
+
 export interface ProvisionRequest {
   target: ssh.SshTarget;
   /** Human-friendly label for the daemon in the client (defaults to host). */
   daemonName?: string;
   /** Absolute path to the local switchboard-daemon-*.tar.gz built by dist:daemon-tarball. */
   tarballPath: string;
-  /** Local port to connect to daemon on target (always 3717 in v1). */
+  /** Local port the daemon will listen on (matches its systemd unit). */
   daemonPort: number;
+  /**
+   * Local paths to the cert bundle the operator issued from the lab CA for
+   * this target. The provisioner uploads them into the target's
+   * ~/.switchboard/tls/ before starting the daemon.
+   */
+  certs: ServerCertBundle;
 }
 
 export type ProgressCallback = (state: readonly StepState[]) => void;
@@ -42,38 +64,37 @@ export type ProgressCallback = (state: readonly StepState[]) => void;
 const REMOTE_INSTALL_ROOT = '~/.local/share/switchboard';
 const REMOTE_TARBALL_TMP = '/tmp/switchboard-daemon.tar.gz';
 const REMOTE_UNIT_PATH = '~/.config/systemd/user/switchboard-daemon.service';
-const REMOTE_PAIRING_CODE_PATH = '~/.switchboard/pairing-code.txt';
+const REMOTE_TLS_DIR = '~/.switchboard/tls';
 
 const STEP_LABELS: Record<StepId, string> = {
   'test-connection': 'Test SSH connection',
-  'probe-target': 'Verify Node ≥ 20 and systemd --user',
+  'probe-target': 'Probe target (resolve $HOME, check systemd --user)',
   'check-existing': 'Check for existing install',
   'upload-tarball': 'Upload daemon tarball',
+  'upload-certs': 'Upload TLS certs',
   'extract': 'Extract tarball on target',
   'install-service': 'Install and enable systemd service',
   'wait-ready': 'Wait for daemon to accept connections',
-  'read-code': 'Read pairing code from target',
-  'complete-pairing': 'Complete pairing with daemon',
+  'connect-client': 'Connect this client to the daemon',
   'cleanup': 'Clean up temporary files',
 };
 
 const STEP_ORDER: StepId[] = [
-  'test-connection', 'probe-target', 'check-existing', 'upload-tarball',
-  'extract', 'install-service', 'wait-ready', 'read-code',
-  'complete-pairing', 'cleanup',
+  'test-connection', 'probe-target', 'check-existing',
+  'upload-tarball', 'upload-certs',
+  'extract', 'install-service', 'wait-ready',
+  'connect-client', 'cleanup',
 ];
 
 /**
- * Build the systemd user-unit content for the remote daemon. The absolute
- * remote paths are baked in at install time; the target's HOME is resolved
- * once in probeTarget and passed here. We always use the Node runtime bundled
- * in the tarball (DEC-000009) so the target host is not required to have
- * Node installed at all.
+ * systemd user unit for the mTLS daemon. Bundled Node runtime (DEC-000009);
+ * cert dir is the well-known path under $HOME (`transport-mtls-spec.md`).
  */
 function buildUnitFile(remoteHome: string): string {
   const installRoot = `${remoteHome}/.local/share/switchboard/switchboard-daemon`;
   const nodeBin = `${installRoot}/bin/node`;
   const daemonJs = `${installRoot}/dist/daemon/daemon/daemon.js`;
+  const tlsDir = `${remoteHome}/.switchboard/tls`;
   return [
     '[Unit]',
     'Description=Switchboard daemon',
@@ -81,12 +102,10 @@ function buildUnitFile(remoteHome: string): string {
     '',
     '[Service]',
     'Type=simple',
-    // Bind on all interfaces — dual-stack IPv4+IPv6. On typical Linux with
-    // net.ipv6.bindv6only=0 (the default), binding to `::` accepts both v4
-    // and v6 clients through a single listener. TLS + fingerprint pinning +
-    // token auth gate access; the local-only daemon spawned by the client
-    // still defaults to 127.0.0.1.
+    // Dual-stack bind (see rc.9). mTLS + CA-validated client certs gate access;
+    // there is no token or fingerprint pin to leak.
     'Environment=SWITCHBOARD_HOST=::',
+    `Environment=SWITCHBOARD_TLS_DIR=${tlsDir}`,
     `ExecStart=${nodeBin} ${daemonJs}`,
     'Restart=on-failure',
     'RestartSec=5',
@@ -97,11 +116,6 @@ function buildUnitFile(remoteHome: string): string {
   ].join('\n');
 }
 
-/**
- * Escape a string for safe interpolation into a heredoc-style ssh `cat > file`
- * pipeline. We deliberately quote the heredoc marker so no expansion happens
- * on the remote side; this just guards the tag boundary itself.
- */
 function safeHeredoc(marker: string, content: string): string {
   if (content.includes(`\n${marker}\n`)) {
     throw new Error(`heredoc marker "${marker}" collides with content`);
@@ -109,10 +123,6 @@ function safeHeredoc(marker: string, content: string): string {
   return `cat > "$FILE" <<'${marker}'\n${content}\n${marker}\n`;
 }
 
-/**
- * Runs the 10-step remote provisioning flow. One instance = one provisioning
- * attempt; construct a new one for a retry from scratch.
- */
 export class RemoteProvisioner {
   private steps: StepState[];
   private cancelled = false;
@@ -153,9 +163,7 @@ export class RemoteProvisioner {
     }
   }
 
-  /** Run all steps starting at `fromStep` (default = first). */
   async run(fromStep?: StepId): Promise<void> {
-    // Reset steps at and after fromStep to pending so retry shows them fresh.
     const startIdx = fromStep ? STEP_ORDER.indexOf(fromStep) : 0;
     if (startIdx < 0) throw new Error(`unknown step: ${fromStep}`);
     for (let i = startIdx; i < STEP_ORDER.length; i++) {
@@ -185,16 +193,14 @@ export class RemoteProvisioner {
       case 'probe-target': return this.probeTarget();
       case 'check-existing': return this.checkExisting();
       case 'upload-tarball': return this.uploadTarball();
+      case 'upload-certs': return this.uploadCerts();
       case 'extract': return this.extract();
       case 'install-service': return this.installService();
       case 'wait-ready': return this.waitReady();
-      case 'read-code': /* handled inside completePairing */ return this.readCode();
-      case 'complete-pairing': return this.completePairing();
+      case 'connect-client': return this.connectClient();
       case 'cleanup': return this.cleanup();
     }
   }
-
-  // --- step implementations ---
 
   private async testConnection(): Promise<void> {
     await ssh.test(this.req.target);
@@ -202,9 +208,6 @@ export class RemoteProvisioner {
   }
 
   private async probeTarget(): Promise<void> {
-    // Node is no longer probed — we ship our own runtime in the tarball
-    // (DEC-000009). We still verify systemd --user is active and resolve
-    // $HOME for the systemd unit's absolute paths.
     const r = await ssh.run(
       this.req.target,
       'set -e; echo "$HOME"; systemctl --user is-system-running || true',
@@ -217,8 +220,6 @@ export class RemoteProvisioner {
     if (!remoteHome.startsWith('/')) {
       throw new Error(`Could not resolve $HOME on target (got: ${JSON.stringify(remoteHome)})`);
     }
-    // systemctl --user prints "running" or "degraded" (both acceptable) when a user session exists.
-    // "offline" or empty means no user session — fatal for our systemd-based install.
     if (!/^(running|degraded|starting)$/.test(systemdStatus)) {
       throw new Error(
         `systemd --user is not active on target (status: ${JSON.stringify(systemdStatus)}). ` +
@@ -249,11 +250,43 @@ export class RemoteProvisioner {
     this.setStep('upload-tarball', { message: `${(size / 1024).toFixed(0)} KB uploaded` });
   }
 
+  private async uploadCerts(): Promise<void> {
+    const { serverCertPath, serverKeyPath, caCertPath } = this.req.certs;
+    for (const [label, p] of [
+      ['server cert', serverCertPath],
+      ['server key', serverKeyPath],
+      ['CA cert', caCertPath],
+    ] as const) {
+      if (!fs.existsSync(p)) throw new Error(`Local ${label} not found: ${p}`);
+    }
+
+    // Ensure the remote TLS dir exists with tight perms before uploads land.
+    await ssh.run(
+      this.req.target,
+      'mkdir -p ~/.switchboard/tls && chmod 700 ~/.switchboard ~/.switchboard/tls',
+      { timeoutMs: 10_000 },
+    );
+
+    // Upload to a temp path first, then move into place under the right names
+    // and perms in a single remote step.
+    const tmpCert = '/tmp/sb-server.crt';
+    const tmpKey = '/tmp/sb-server.key';
+    const tmpCa = '/tmp/sb-ca.crt';
+    await ssh.upload(this.req.target, serverCertPath, tmpCert);
+    await ssh.upload(this.req.target, serverKeyPath, tmpKey);
+    await ssh.upload(this.req.target, caCertPath, tmpCa);
+    await ssh.run(
+      this.req.target,
+      `install -m 644 ${tmpCert} ${REMOTE_TLS_DIR}/server.crt && ` +
+      `install -m 600 ${tmpKey} ${REMOTE_TLS_DIR}/server.key && ` +
+      `install -m 644 ${tmpCa} ${REMOTE_TLS_DIR}/ca.crt && ` +
+      `rm -f ${tmpCert} ${tmpKey} ${tmpCa}`,
+      { timeoutMs: 10_000 },
+    );
+    this.setStep('upload-certs', { message: `installed to ${REMOTE_TLS_DIR}` });
+  }
+
   private async extract(): Promise<void> {
-    // Stop any running instance first so we don't overwrite files under a live
-    // process (node's require cache aside, node-pty's .node file being rewritten
-    // while loaded is asking for trouble). `|| true` because the service may
-    // not yet exist on a first install.
     await ssh.run(
       this.req.target,
       'systemctl --user stop switchboard-daemon 2>/dev/null || true; ' +
@@ -267,10 +300,6 @@ export class RemoteProvisioner {
   private async installService(): Promise<void> {
     if (!this.probed) throw new Error('installService called before probe-target populated remoteHome');
     const unit = buildUnitFile(this.probed.remoteHome);
-    // Write the unit file, reload, ensure enabled for auto-start, then
-    // *restart* — not `enable --now`, which is a no-op when the service is
-    // already running and would leave the old process (with old env vars)
-    // in place after a reprovision.
     const marker = 'SB_UNIT_END';
     const script =
       'mkdir -p ~/.config/systemd/user && ' +
@@ -295,7 +324,6 @@ export class RemoteProvisioner {
           'systemctl --user is-active switchboard-daemon 2>&1 || true',
         );
         if (r.stdout.trim() === 'active') {
-          // Also confirm the daemon has bound the port
           const journal = await ssh.run(
             this.req.target,
             'journalctl --user -u switchboard-daemon -n 50 --no-pager || true',
@@ -303,7 +331,7 @@ export class RemoteProvisioner {
           if (journal.stdout.toLowerCase().includes('listening on') ||
               journal.stdout.toLowerCase().includes('daemon started') ||
               journal.stdout.includes('WebSocket server') ||
-              journal.stdout.includes('3717')) {
+              journal.stdout.includes('Daemon ready.')) {
             this.setStep('wait-ready', { message: `ready (${((Date.now() - start) / 1000).toFixed(1)}s)` });
             return;
           }
@@ -319,67 +347,20 @@ export class RemoteProvisioner {
     throw new Error(`daemon did not become ready within ${timeoutMs / 1000}s (${lastError})`);
   }
 
-  // read-code and complete-pairing are tightly coupled. We initiate pairing
-  // *first* so the daemon generates a code and writes the file, then read it,
-  // then submit. Both steps observe from the same completePairing() body so
-  // they stay in sync; the runStep switch just marks read-code active/done.
-  private async readCode(): Promise<void> {
-    // Placeholder step-level marker; the actual read happens in completePairing.
-    // We just do a quick file-visibility sanity check here.
-    this.setStep('read-code', { message: 'will read after triggering pair-request' });
-  }
-
-  private async completePairing(): Promise<void> {
+  private async connectClient(): Promise<void> {
     const { target } = this.req;
     const daemonName = this.req.daemonName || target.host;
-
-    // Kick off pairing on the local side; this opens a WS to the daemon.
-    await this.connectionManager.pair(target.host, this.req.daemonPort, daemonName);
-
-    // Poll the remote pairing-code file. Give the daemon time to receive the
-    // pair:request over WS and write the file synchronously in its handler.
-    let code: string | null = null;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      this.throwIfCancelled();
-      await sleep(300);
-      try {
-        const r = await ssh.run(target, `cat ${REMOTE_PAIRING_CODE_PATH} 2>/dev/null || true`, { timeoutMs: 5_000 });
-        const s = r.stdout.trim();
-        if (/^\d{6}$/.test(s)) { code = s; break; }
-      } catch { /* keep polling */ }
-    }
-    if (!code) throw new Error('Timed out reading pairing code from remote');
-    this.setStep('read-code', { status: 'done', message: 'code retrieved' });
-
-    // Wait for the WS's pair-success broadcast, then submit the code.
-    const pairSuccess = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('pairing timed out on client')), 15_000);
-      const onSuccess = (): void => {
-        clearTimeout(timeout);
-        resolve();
-      };
-      const onFailed = (reason: string): void => {
-        clearTimeout(timeout);
-        reject(new Error(`pairing rejected by daemon: ${reason}`));
-      };
-      // These listeners are per-pairing-attempt; ConnectionManager fires them
-      // via broadcast, and we hook the same electron IPC channel here.
-      this.connectionManager.onPairSuccessOnce(onSuccess);
-      this.connectionManager.onPairFailedOnce(onFailed);
-    });
-
-    this.connectionManager.submitPairingCode(code);
-    await pairSuccess;
-    this.setStep('complete-pairing', { message: 'paired' });
+    // Under mTLS this is a plain WS connect. The daemon's identity metadata
+    // arrives via auth:ok and the ConnectionManager rekeys the provisional
+    // config to the daemon's real daemonId at that point.
+    this.connectionManager.addAndConnect(target.host, this.req.daemonPort, daemonName);
+    this.setStep('connect-client', { message: 'client connect initiated' });
   }
 
   private async cleanup(): Promise<void> {
-    // /tmp tarball already removed by the extract step; keep this cheap and
-    // ensure no lingering half-state remains.
     await ssh.run(
       this.req.target,
-      `rm -f ${REMOTE_TARBALL_TMP} ${REMOTE_PAIRING_CODE_PATH} 2>/dev/null || true`,
+      `rm -f ${REMOTE_TARBALL_TMP} 2>/dev/null || true`,
       { timeoutMs: 5_000 },
     );
     this.setStep('cleanup', { message: 'temp files removed' });
@@ -390,21 +371,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Resolve the packaged daemon-tarball path. Packaged AppImages carry the
- * tarball under a stable name in process.resourcesPath (see the
- * `build.extraResources` entry in package.json). In dev, we fall back to
- * versioned/stable copies in release/.
- */
 export function defaultTarballPath(version: string): string {
   const versioned = `switchboard-daemon-${version}-linux-x64.tar.gz`;
   const stable = 'switchboard-daemon.tar.gz';
 
-  // Packaged: extraResources copies release/switchboard-daemon.tar.gz here.
   const packagedStable = path.join(process.resourcesPath || '', stable);
   if (fs.existsSync(packagedStable)) return packagedStable;
 
-  // Dev: repo-relative release directory.
   for (const name of [stable, versioned]) {
     const dev = path.join(app.getAppPath(), '..', '..', 'release', name);
     if (fs.existsSync(dev)) return dev;
@@ -412,7 +385,5 @@ export function defaultTarballPath(version: string): string {
     if (fs.existsSync(cwd)) return cwd;
   }
 
-  // Last-ditch: return the packaged path so the error message points at the
-  // right place ("expected the AppImage to bundle the tarball at ...").
   return packagedStable;
 }

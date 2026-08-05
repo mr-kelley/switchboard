@@ -41,6 +41,14 @@ describe('RemoteProvisioningModal', () => {
     expect(screen.queryByTestId('remote-provisioning-modal')).not.toBeInTheDocument();
   });
 
+  function fillMinimum(): void {
+    fireEvent.change(screen.getByTestId('input-host'), { target: { value: 'srv.example' } });
+    fireEvent.change(screen.getByTestId('input-user'), { target: { value: 'ubuntu' } });
+    fireEvent.change(screen.getByTestId('input-server-cert'), { target: { value: '/certs/server.crt' } });
+    fireEvent.change(screen.getByTestId('input-server-key'), { target: { value: '/certs/server.key' } });
+    fireEvent.change(screen.getByTestId('input-ca-cert'), { target: { value: '/certs/ca.crt' } });
+  }
+
   it('rejects submit with empty host', () => {
     render(<RemoteProvisioningModal isOpen={true} onClose={vi.fn()} />);
     fireEvent.change(screen.getByTestId('input-user'), { target: { value: 'ubuntu' } });
@@ -48,10 +56,17 @@ describe('RemoteProvisioningModal', () => {
     expect(screen.getByTestId('modal-error')).toHaveTextContent(/Host and user are required/);
   });
 
-  it('calls start with the entered target', async () => {
+  it('rejects submit with missing cert paths', () => {
     render(<RemoteProvisioningModal isOpen={true} onClose={vi.fn()} />);
     fireEvent.change(screen.getByTestId('input-host'), { target: { value: 'srv.example' } });
     fireEvent.change(screen.getByTestId('input-user'), { target: { value: 'ubuntu' } });
+    fireEvent.click(screen.getByTestId('submit-provision'));
+    expect(screen.getByTestId('modal-error')).toHaveTextContent(/cert.*required/i);
+  });
+
+  it('calls start with the entered target and cert bundle', async () => {
+    render(<RemoteProvisioningModal isOpen={true} onClose={vi.fn()} />);
+    fillMinimum();
     fireEvent.change(screen.getByTestId('input-port'), { target: { value: '2222' } });
     fireEvent.click(screen.getByTestId('submit-provision'));
     await waitFor(() => {
@@ -59,14 +74,18 @@ describe('RemoteProvisioningModal', () => {
         target: { host: 'srv.example', user: 'ubuntu', port: 2222, identityFile: undefined },
         daemonName: undefined,
         daemonPort: 3717,
+        certs: {
+          serverCertPath: '/certs/server.crt',
+          serverKeyPath: '/certs/server.key',
+          caCertPath: '/certs/ca.crt',
+        },
       });
     });
   });
 
   it('renders step list when progress arrives', async () => {
     const { rerender } = render(<RemoteProvisioningModal isOpen={true} onClose={vi.fn()} />);
-    fireEvent.change(screen.getByTestId('input-host'), { target: { value: 'srv' } });
-    fireEvent.change(screen.getByTestId('input-user'), { target: { value: 'u' } });
+    fillMinimum();
     fireEvent.click(screen.getByTestId('submit-provision'));
     await waitFor(() => expect(progressCb).not.toBeNull());
     progressCb!([
@@ -84,8 +103,7 @@ describe('RemoteProvisioningModal', () => {
   it('shows Retry button on failure and calls retryFrom', async () => {
     (window as any).switchboard.remoteProvision.start = vi.fn().mockRejectedValue(new Error('boom'));
     render(<RemoteProvisioningModal isOpen={true} onClose={vi.fn()} />);
-    fireEvent.change(screen.getByTestId('input-host'), { target: { value: 'srv' } });
-    fireEvent.change(screen.getByTestId('input-user'), { target: { value: 'u' } });
+    fillMinimum();
     fireEvent.click(screen.getByTestId('submit-provision'));
     await waitFor(() => expect(progressCb).not.toBeNull());
     progressCb!([

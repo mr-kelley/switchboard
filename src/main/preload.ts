@@ -100,8 +100,11 @@ const api = {
     },
   },
   daemon: {
-    add(config: { id: string; name: string; host: string; port: number; token: string; fingerprint: string; autoConnect: boolean }) {
+    add(config: { id: string; name: string; host: string; port: number; autoConnect: boolean }) {
       return ipcRenderer.invoke('daemon:add', config);
+    },
+    addAndConnect(host: string, port: number, name: string) {
+      return ipcRenderer.invoke('daemon:add-and-connect', { host, port, name });
     },
     connect(daemonId: string) {
       return ipcRenderer.invoke('daemon:connect', daemonId);
@@ -135,33 +138,6 @@ const api = {
       };
       ipcRenderer.on('daemon:error', handler);
       return () => ipcRenderer.removeListener('daemon:error', handler);
-    },
-    pair(host: string, port: number, clientName: string) {
-      return ipcRenderer.invoke('daemon:pair', { host, port, clientName });
-    },
-    submitCode(code: string) {
-      return ipcRenderer.invoke('daemon:submit-code', code);
-    },
-    onPairChallenge(callback: (daemonName: string) => void): () => void {
-      const handler = (_event: Electron.IpcRendererEvent, args: { daemonName: string }) => {
-        callback(args.daemonName);
-      };
-      ipcRenderer.on('daemon:pair-challenge', handler);
-      return () => ipcRenderer.removeListener('daemon:pair-challenge', handler);
-    },
-    onPairSuccess(callback: (name: string) => void): () => void {
-      const handler = (_event: Electron.IpcRendererEvent, args: { name: string }) => {
-        callback(args.name);
-      };
-      ipcRenderer.on('daemon:pair-success', handler);
-      return () => ipcRenderer.removeListener('daemon:pair-success', handler);
-    },
-    onPairFailed(callback: (reason: string) => void): () => void {
-      const handler = (_event: Electron.IpcRendererEvent, args: { reason: string }) => {
-        callback(args.reason);
-      };
-      ipcRenderer.on('daemon:pair-failed', handler);
-      return () => ipcRenderer.removeListener('daemon:pair-failed', handler);
     },
     localService: {
       status() {

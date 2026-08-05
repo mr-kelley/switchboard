@@ -49,11 +49,8 @@ beforeEach(() => {
       statuses: vi.fn().mockResolvedValue([]),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
       onConnected: vi.fn().mockReturnValue(() => {}),
-      pair: vi.fn().mockResolvedValue(undefined),
-      submitCode: vi.fn().mockResolvedValue(undefined),
-      onPairChallenge: vi.fn().mockReturnValue(() => {}),
-      onPairSuccess: vi.fn().mockReturnValue(() => {}),
-      onPairFailed: vi.fn().mockReturnValue(() => {}),
+      onError: vi.fn().mockReturnValue(() => {}),
+      addAndConnect: vi.fn().mockResolvedValue('daemon-id'),
     },
     preferences: {
       load: vi.fn().mockResolvedValue({}),

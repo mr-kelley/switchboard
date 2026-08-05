@@ -25,8 +25,6 @@ function makeConfig(id: string, overrides: Partial<DaemonConnectionConfig> = {})
     name: `Daemon ${id}`,
     host: '10.0.0.1',
     port: 3717,
-    token: 'test-token',
-    fingerprint: 'test-fp',
     autoConnect: true,
     ...overrides,
   };
