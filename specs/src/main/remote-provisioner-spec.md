@@ -1,6 +1,6 @@
 ---
 title: Remote Provisioner Specification
-version: 0.3.1
+version: 0.3.2
 maintained_by: claude
 domain_tags: [electron, main-process, remote-provisioning, ssh, systemd, mtls, multi-arch]
 status: active
@@ -51,13 +51,13 @@ Auth is mutual TLS keyed off the operator's lab CA (DEC-000010); tarball selecti
 | 1 | `test-connection` | Verify SSH auth + reachability | `true` |
 | 2 | `probe-target` | Resolve `$HOME`, verify systemd --user is active, read `uname -m` to select the matching tarball, **and verify `Linger=yes` for the target user** so the daemon survives after our SSH login exits. Node is not probed — the tarball bundles its own runtime (DEC-000009). | `set -e; echo "$HOME"; systemctl --user is-system-running \|\| true; uname -m; loginctl show-user "$USER" --property=Linger --value 2>/dev/null \|\| echo unknown` |
 | 3 | `check-existing` | Detect a prior install (informational; does not branch behavior in v1) | `test -f ~/.local/share/switchboard/switchboard-daemon/dist/daemon/daemon/daemon.js && echo yes \|\| echo no` |
-| 4 | `upload-tarball` | scp the **arch-matched** daemon tarball to `/tmp/switchboard-daemon.tar.gz` | (scp) |
-| 5 | `upload-certs` | Upload `server.crt`, `server.key`, `ca.crt` to `~/.switchboard/tls/` with `0700` on the dir, `0644`/`0600`/`0644` respectively | (scp + `install -m`) |
-| 6 | `extract` | Stop any prior daemon, overwrite prior install and extract | `systemctl --user stop switchboard-daemon 2>/dev/null \|\| true; mkdir -p ~/.local/share/switchboard && rm -rf ~/.local/share/switchboard/switchboard-daemon && tar -xzf /tmp/switchboard-daemon.tar.gz -C ~/.local/share/switchboard && rm -f /tmp/switchboard-daemon.tar.gz` |
+| 4 | `upload-tarball` | Ensure a user-owned cache dir exists (`mkdir -p ~/.cache/switchboard && chmod 700 ~/.cache/switchboard`), then scp the **arch-matched** daemon tarball to `~/.cache/switchboard/switchboard-daemon.tar.gz`. Never `/tmp`, which has the sticky bit and causes cross-operator collisions on shared hosts (DEC-000014). | `mkdir -p ~/.cache/switchboard && chmod 700 ~/.cache/switchboard` + (scp) |
+| 5 | `upload-certs` | Upload `server.crt`, `server.key`, `ca.crt` via `~/.cache/switchboard/sb-*` temp paths (0700 parent dir shields the mid-upload private key from other users on the target — DEC-000014), then `install -m 0644/0600/0644` into `~/.switchboard/tls/` in a single remote step | (scp + `install -m`) |
+| 6 | `extract` | Stop any prior daemon, overwrite prior install and extract | `systemctl --user stop switchboard-daemon 2>/dev/null \|\| true; mkdir -p ~/.local/share/switchboard && rm -rf ~/.local/share/switchboard/switchboard-daemon && tar -xzf ~/.cache/switchboard/switchboard-daemon.tar.gz -C ~/.local/share/switchboard && rm -f ~/.cache/switchboard/switchboard-daemon.tar.gz` |
 | 7 | `install-service` | Write systemd user unit and enable+restart | See §Systemd Unit Template |
 | 8 | `wait-ready` | Poll `systemctl --user is-active` and the journal for a listening/ready marker | Loop with 500ms sleep, 30s timeout |
 | 9 | `connect-client` | Kick off `ConnectionManager.addAndConnect(host, daemonPort, daemonName)` so the client attempts the mTLS handshake. The `auth:ok` metadata message rekeys the provisional record to the daemon's real `daemonId`. | (client-side WS open) |
-| 10 | `cleanup` | Remove temp tarball | `rm -f /tmp/switchboard-daemon.tar.gz 2>/dev/null \|\| true` |
+| 10 | `cleanup` | Remove temp tarball | `rm -f ~/.cache/switchboard/switchboard-daemon.tar.gz 2>/dev/null \|\| true` |
 
 # Arch Detection (post-DEC-000012)
 
@@ -111,7 +111,7 @@ WantedBy=default.target
   - `server.crt` → `0644`
   - `server.key` → `0600`
   - `ca.crt` → `0644`
-- Files are uploaded to `/tmp/sb-*` first and then moved into place via `install -m` in a single remote step, so a partial upload never leaves a live daemon reading a mid-write file.
+- Files are uploaded to `~/.cache/switchboard/sb-*` first (a 0700 user-owned dir created by step 4 — see DEC-000014) and then moved into place via `install -m` in a single remote step, so a partial upload never leaves a live daemon reading a mid-write file and no plaintext private key ever sits at 0644 in world-readable `/tmp` during the upload window.
 - The provisioner refuses to run `upload-certs` if any of the three local paths in `ProvisionRequest.certs` does not exist — checked before any bytes leave the client.
 
 ## Client Connection (post-mTLS)
@@ -137,6 +137,7 @@ If none exist, `upload-tarball` throws with the resolved paths in the error mess
 - **Daemon fails to become active/ready within 30s:** step 8 throws with the last observed service state or journal fragment. Retriable.
 - **Cert bundle path missing on the client:** step 5 throws before any upload, naming the missing path.
 - **Cert dir already exists on the target with looser perms:** step 5's `chmod 700` tightens it.
+- **Stale transient file owned by another user on the target:** does not happen — step 4 uploads under `~/.cache/switchboard/`, a per-user dir. Historically (pre-DEC-000014) the provisioner wrote to `/tmp/switchboard-daemon.tar.gz`, and a stale file left by a different operator's failed run would collide with the sticky bit and fail scp with `Permission denied`. If a target still has a stale `/tmp/switchboard-daemon.tar.gz` from before this change, it's harmless orphaned data — the new code no longer touches that path.
 - **Cancel during a step:** the current step's shell child completes on its own (up to 30s worst case for `run()`); after control returns to the state machine, the loop notices the flag and stops before starting the next step.
 - **Retry-from-step re-runs steps N and later:** intermediate steps must be safe against prior partial state (extract always removes first; install-service always daemon-reloads; wait-ready polls fresh; cert install uses `install -m` which overwrites atomically).
 

@@ -89,7 +89,12 @@ export interface ProvisionRequest {
 export type ProgressCallback = (state: readonly StepState[]) => void;
 
 const REMOTE_INSTALL_ROOT = '~/.local/share/switchboard';
-const REMOTE_TARBALL_TMP = '/tmp/switchboard-daemon.tar.gz';
+// User-scoped cache dir for transient upload artifacts (tarball, cert temps).
+// Not /tmp: sticky-bit /tmp collides across operators on shared hosts, and a
+// world-readable temp path briefly exposed the private key at 0644 during
+// upload-certs. See DEC-000014.
+const REMOTE_CACHE_DIR = '~/.cache/switchboard';
+const REMOTE_TARBALL_TMP = `${REMOTE_CACHE_DIR}/switchboard-daemon.tar.gz`;
 const REMOTE_UNIT_PATH = '~/.config/systemd/user/switchboard-daemon.service';
 const REMOTE_TLS_DIR = '~/.switchboard/tls';
 
@@ -302,6 +307,13 @@ export class RemoteProvisioner {
     if (!fs.existsSync(tarballPath)) {
       throw new Error(`Local tarball not found for ${this.probed.arch}: ${tarballPath}`);
     }
+    // Ensure the per-user cache dir exists with 0700 before any bytes land.
+    // Also covers the cert temp paths used by the next step. See DEC-000014.
+    await ssh.run(
+      this.req.target,
+      `mkdir -p ${REMOTE_CACHE_DIR} && chmod 700 ${REMOTE_CACHE_DIR}`,
+      { timeoutMs: 10_000 },
+    );
     await ssh.upload(this.req.target, tarballPath, REMOTE_TARBALL_TMP);
     const size = fs.statSync(tarballPath).size;
     this.setStep('upload-tarball', {
@@ -327,10 +339,12 @@ export class RemoteProvisioner {
     );
 
     // Upload to a temp path first, then move into place under the right names
-    // and perms in a single remote step.
-    const tmpCert = '/tmp/sb-server.crt';
-    const tmpKey = '/tmp/sb-server.key';
-    const tmpCa = '/tmp/sb-ca.crt';
+    // and perms in a single remote step. The cache dir is 0700 (created by
+    // upload-tarball, DEC-000014), so the private key is never world-readable
+    // even for the sub-second upload window.
+    const tmpCert = `${REMOTE_CACHE_DIR}/sb-server.crt`;
+    const tmpKey = `${REMOTE_CACHE_DIR}/sb-server.key`;
+    const tmpCa = `${REMOTE_CACHE_DIR}/sb-ca.crt`;
     await ssh.upload(this.req.target, serverCertPath, tmpCert);
     await ssh.upload(this.req.target, serverKeyPath, tmpKey);
     await ssh.upload(this.req.target, caCertPath, tmpCa);

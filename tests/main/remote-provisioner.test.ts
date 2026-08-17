@@ -120,6 +120,35 @@ describe('RemoteProvisioner (mTLS + multi-arch)', () => {
     expect(probeStep.message).toContain('arch=linux-x64');
   });
 
+  it('never uploads transient files to /tmp — uses ~/.cache/switchboard (DEC-000014)', async () => {
+    const calls = makeRunner({
+      'uname -m': probeStdout('x86_64'),
+      'test -f': 'no',
+      'is-active switchboard-daemon': 'active',
+      'journalctl': 'Daemon ready.',
+    });
+    const { p } = makeProvisioner();
+    await p.run();
+
+    // Regression: /tmp on the TARGET is sticky-bit shared, so a stale file
+    // from another operator collides on scp. Check only remote-side strings
+    // (scp destinations + ssh remote-command args) — local test fixtures live
+    // in /tmp too and are irrelevant.
+    const remoteStrings = calls.map((c) => c.args[c.args.length - 1]);
+    for (const s of remoteStrings) {
+      expect(s).not.toMatch(/\/tmp\/switchboard/);
+      expect(s).not.toMatch(/\/tmp\/sb-/);
+    }
+    // A pre-upload mkdir of the user-scoped cache dir is required.
+    expect(remoteStrings.some((s) => /mkdir -p ~\/\.cache\/switchboard/.test(s))).toBe(true);
+    // scp destinations for the tarball and cert temps must sit under it.
+    const scpDests = calls.filter((c) => c.cmd === 'scp').map((c) => c.args[c.args.length - 1]);
+    expect(scpDests.length).toBeGreaterThan(0);
+    for (const dest of scpDests) {
+      expect(dest).toMatch(/:~\/\.cache\/switchboard\//);
+    }
+  });
+
   it.each([
     { uname: 'x86_64',  arch: 'linux-x64' },
     { uname: 'aarch64', arch: 'linux-arm64' },
