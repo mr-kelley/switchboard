@@ -41,3 +41,6 @@ npm-debug.log*
 # lab-specific info; other roles keep authoritative copies in their own
 # internal repos. My copy stays untracked.
 .handoffs/
+
+# Perf monitor CSVs (see scripts/perf/monitor_cpu_daemon_client_v2.sh)
+switchboard_cpu_v2_*.csv
