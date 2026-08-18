@@ -1,0 +1,76 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000014",
+  "ts": "2026-08-17T09:15:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude+user",
+  "decision_class": "B",
+  "title": "Remote provisioner uploads its transient tarball and cert files under a user-scoped cache dir (~/.cache/switchboard) instead of /tmp",
+  "decision": "`RemoteProvisioner` no longer writes to the sticky-bit shared `/tmp` on the target. The transient daemon tarball moves from `/tmp/switchboard-daemon.tar.gz` to `~/.cache/switchboard/switchboard-daemon.tar.gz`, and the three cert-upload temp paths (`/tmp/sb-server.crt`, `/tmp/sb-server.key`, `/tmp/sb-ca.crt`) move under the same dir (`~/.cache/switchboard/sb-server.crt` etc). The provisioner runs `mkdir -p ~/.cache/switchboard && chmod 700 ~/.cache/switchboard` once before any upload as part of `upload-tarball`, so the whole cache dir is owner-only. Governed by the amended `specs/src/main/remote-provisioner-spec.md` (v0.3.2).",
+  "context": {
+    "task_description": "Observed on 2026-08-17: provisioning the daemon on `mainmast0` (Ubuntu x86_64) failed at `upload-tarball` with `scp: dest open \"/tmp/switchboard-daemon.tar.gz\": Permission denied`. Root cause: `/tmp` has the sticky bit set, and `/tmp/switchboard-daemon.tar.gz` already existed from a prior install attempt by a different user on that host. Because sticky-bit `/tmp` only lets the file owner overwrite, the current user's scp bounced. The user unblocked the immediate incident by `sudo rm`-ing the stale file and re-running, which confirmed the diagnosis. The same pattern applies to `/tmp/sb-server.{crt,key}` and `/tmp/sb-ca.crt` in `upload-certs` — nobody has hit it yet only because certs are smaller and less likely to survive from a prior run, but the failure mode is identical. This is the same category of hidden precondition as DEC-000013 (missing user-linger): a shared-namespace assumption on the target that silently makes provisioning brittle in multi-operator environments.",
+    "assumptions": [
+      "`~/.cache/` is either present on the target or safely creatable by the user without special permissions (true on every distro we support: Debian/Raspbian/Ubuntu all populate it on first user login).",
+      "Every scp destination we use accepts `~/` tilde-expansion via the remote shell (this is standard openssh behavior; the existing spec already relies on it for `~/.switchboard/tls`).",
+      "Uploading transient files into a 0700 dir is a strict improvement over the current sticky-bit `/tmp` approach because it also closes the short window during which the private key sat at 0644 in world-readable /tmp before `install -m 0600` moved it into the tls dir."
+    ],
+    "spec_refs": [
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["remote-provisioning", "operator-experience", "reliability", "security-hygiene"],
+    "paths": [
+      "src/main/remote-provisioner.ts",
+      "specs/src/main/remote-provisioner-spec.md",
+      "tests/main/remote-provisioner.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Move transient uploads under ~/.cache/switchboard/ with 0700 on the dir (chosen)",
+      "chosen": true,
+      "description": "A single well-known per-user cache dir under `$HOME` holds every transient the provisioner uploads (tarball + three cert temps). `mkdir -p && chmod 700` runs once before uploads. Cost: one extra remote command per run, four constant-string changes in the provisioner, spec + DEC. Zero policy changes on the target. Closes the sticky-bit collision AND the incidental world-readable-key-in-/tmp window. Path collides with nothing under XDG (`~/.cache/switchboard` is namespaced by our project name)."
+    },
+    {
+      "id": "B",
+      "label": "Use `mktemp -p /tmp -d switchboard-XXXX` on the remote to get a unique per-run dir",
+      "chosen": false,
+      "description": "Ask the remote shell to hand back a fresh `/tmp/switchboard-abc12` for each run. Rejected: adds a probe/round-trip and thread a dynamic path through every subsequent step (upload-tarball, upload-certs, extract, cleanup all need it), complicating cancellation and retry-from-step. Still leaves the private key at 0644 in `/tmp` for the upload window. And crucially, doesn't solve the operator-clarity issue: a repeated failure would leave a scatter of `/tmp/switchboard-*` dirs, whereas Option A leaves exactly one persistent dir the operator can inspect."
+    },
+    {
+      "id": "C",
+      "label": "Upload directly into the destination dirs (~/.switchboard/tls for certs; the install root for the tarball)",
+      "chosen": false,
+      "description": "Skip the temp step entirely; scp certs straight to `~/.switchboard/tls/server.crt` etc, and the tarball straight into `~/.local/share/switchboard/`. Rejected: breaks the atomicity guarantee we rely on for certs — a partial cert upload would leave a live daemon reading a mid-write file. The current `install -m` two-phase pattern is deliberate; Option A preserves it. For the tarball, uploading straight into the install root would mean a failed extract leaves a half-installed daemon dir instead of just a stray tarball. The two-phase (upload → install/extract) shape is worth keeping; only the temp location changes."
+    },
+    {
+      "id": "D",
+      "label": "Document the requirement (\"first operator on a host must clean /tmp\") without changing behavior",
+      "chosen": false,
+      "description": "Add a note to the README and rely on the operator to remember. Rejected for the same reason DEC-000013's Option D was rejected — this is exactly the failure we just hit, the runbook grows unbounded, and every future operator eats the same paper cut. Detect/avoid at code time is worth 10 lines."
+    }
+  ],
+  "rationale": "Option A is the minimal change that removes the failure mode entirely. `~/.cache/switchboard/` is user-owned, so multi-operator hosts stop colliding; it's XDG-standard so it doesn't surprise operators inspecting the target; the 0700 chmod is a strict security improvement over the current sticky-bit-/tmp state for the cert-upload window; and the persistent-dir shape means the tarball location is stable for support debugging. Option B's dynamic-per-run temp dir is a strictly larger change with no measurable win. Option C sacrifices the atomic-install guarantee. Option D repeats the DEC-000013 mistake. The change is small enough to ship in the same PR as DEC-000013 (both are provisioner fail-closed/hardening fixes discovered in the same operational session).",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Revert the four constant strings and the pre-upload mkdir. No on-target state migration is needed; hosts provisioned under the new code will still work if the constants are reverted (they'd just write to `/tmp` on the next run — which was the original state)."
+  },
+  "links": {
+    "issues": [],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification: (1) provisioner runs end-to-end on a target where a stale `/tmp/switchboard-daemon.tar.gz` owned by a different user exists — must succeed instead of failing with the scp permission error; (2) after a successful run, `~/.cache/switchboard/` exists with mode 0700 and contains no leftover tarball (cleanup step removes it); (3) unit tests continue to pass. Item 1 was hit on mainmast0 on 2026-08-17 (pre-fix); the fix will be re-verified on the same host on the next provision cycle."
+  },
+  "tags": ["remote-provisioning", "operator-experience", "hygiene", "xdg", "raspberry-pi", "fail-closed"]
+}

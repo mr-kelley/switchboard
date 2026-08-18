@@ -74,9 +74,14 @@ function makeRunner(overrides: Record<string, string | ((args: string[]) => stri
   return calls;
 }
 
-// Probe output is now three lines: $HOME, systemctl status, uname -m.
-function probeStdout(unameM: string, systemd = 'running', home = '/home/ubuntu'): string {
-  return `${home}\n${systemd}\n${unameM}`;
+// Probe output is four lines: $HOME, systemctl status, uname -m, Linger.
+function probeStdout(
+  unameM: string,
+  systemd = 'running',
+  home = '/home/ubuntu',
+  linger = 'yes',
+): string {
+  return `${home}\n${systemd}\n${unameM}\n${linger}`;
 }
 
 const target = { host: 'server.example.com', user: 'ubuntu', port: 22 };
@@ -113,6 +118,35 @@ describe('RemoteProvisioner (mTLS + multi-arch)', () => {
     // probe-target message includes the resolved arch slug.
     const probeStep = p.getState().find((s) => s.id === 'probe-target')!;
     expect(probeStep.message).toContain('arch=linux-x64');
+  });
+
+  it('never uploads transient files to /tmp — uses ~/.cache/switchboard (DEC-000014)', async () => {
+    const calls = makeRunner({
+      'uname -m': probeStdout('x86_64'),
+      'test -f': 'no',
+      'is-active switchboard-daemon': 'active',
+      'journalctl': 'Daemon ready.',
+    });
+    const { p } = makeProvisioner();
+    await p.run();
+
+    // Regression: /tmp on the TARGET is sticky-bit shared, so a stale file
+    // from another operator collides on scp. Check only remote-side strings
+    // (scp destinations + ssh remote-command args) — local test fixtures live
+    // in /tmp too and are irrelevant.
+    const remoteStrings = calls.map((c) => c.args[c.args.length - 1]);
+    for (const s of remoteStrings) {
+      expect(s).not.toMatch(/\/tmp\/switchboard/);
+      expect(s).not.toMatch(/\/tmp\/sb-/);
+    }
+    // A pre-upload mkdir of the user-scoped cache dir is required.
+    expect(remoteStrings.some((s) => /mkdir -p ~\/\.cache\/switchboard/.test(s))).toBe(true);
+    // scp destinations for the tarball and cert temps must sit under it.
+    const scpDests = calls.filter((c) => c.cmd === 'scp').map((c) => c.args[c.args.length - 1]);
+    expect(scpDests.length).toBeGreaterThan(0);
+    for (const dest of scpDests) {
+      expect(dest).toMatch(/:~\/\.cache\/switchboard\//);
+    }
   });
 
   it.each([
@@ -165,11 +199,20 @@ describe('RemoteProvisioner (mTLS + multi-arch)', () => {
     await expect(p.run()).rejects.toThrow(/Could not resolve \$HOME/);
   });
 
-  it('rejects when probe output is truncated (missing uname line)', async () => {
-    makeRunner({ 'uname -m': '/home/ubuntu\nrunning' });
+  it('rejects when probe output is truncated (missing linger line)', async () => {
+    makeRunner({ 'uname -m': '/home/ubuntu\nrunning\nx86_64' });
     const { p } = makeProvisioner();
     await expect(p.run()).rejects.toThrow(/probe output malformed/);
   });
+
+  it.each(['no', 'unknown'])(
+    'rejects when user lingering is not enabled (Linger=%s)',
+    async (linger) => {
+      makeRunner({ 'uname -m': probeStdout('x86_64', 'running', '/home/ubuntu', linger) });
+      const { p } = makeProvisioner();
+      await expect(p.run()).rejects.toThrow(/lingering is not enabled.*loginctl enable-linger ubuntu/);
+    },
+  );
 
   it('rejects when a cert file is missing', async () => {
     fs.unlinkSync(certPaths.serverCertPath);

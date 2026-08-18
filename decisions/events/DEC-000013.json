@@ -1,0 +1,76 @@
+{
+  "schema": "aire.decisions.v0.2",
+  "id": "DEC-000013",
+  "ts": "2026-08-05T18:45:00-05:00",
+  "project": "switchboard",
+  "repo": "mr-kelley/switchboard",
+  "made_by": "claude+user",
+  "decision_class": "B",
+  "title": "Remote provisioner fails closed at probe-target when user lingering is not enabled; does not run sudo itself",
+  "decision": "`RemoteProvisioner.probeTarget` (step 2) now reads `loginctl show-user \"$USER\" --property=Linger --value` in the same round trip that captures `$HOME`, `systemctl --user is-system-running`, and `uname -m`, and refuses to proceed unless the value is exactly `yes`. On refusal it throws a specific error naming the target user and the exact `sudo loginctl enable-linger <user>` command to run. The provisioner deliberately does not attempt to run the sudo itself. Governed by the amended `specs/src/main/remote-provisioner-spec.md` (v0.3.1).",
+  "context": {
+    "task_description": "Observed on 2026-08-05: after provisioning the daemon on two Raspberry Pi hosts (ca0.tallship / Pi 3, dns.tallship / Pi 4) with rc.14, the client sees intermittent WS errors and cannot connect — but SSH-ing into either host makes the daemon immediately appear (Active: running since ...; 3s ago). Root cause: the daemon runs as a systemctl --user unit, but user lingering was never enabled on those hosts. Without linger, the target's per-user systemd instance is torn down whenever the last login session exits, and every user service dies with it. The existing probe-target check on `systemctl --user is-system-running` passed cleanly because our SSH connection was itself the session keeping systemd up — the failure was invisible until the operator disconnected. cloud0 (physical x86_64) and the local x86_64 laptop were unaffected because both had a persistent login session for other reasons.",
+    "assumptions": [
+      "`loginctl show-user \"$USER\" --property=Linger --value` is available on every target we support (systemd 209+, which predates all the Debian/Raspbian/Ubuntu releases we deploy to).",
+      "During probe-target the user is actively SSH'd in, so `loginctl show-user` will always return a value (yes/no) rather than failing with 'user not tracked'.",
+      "Requiring the operator to run one sudo command per Pi is preferable to embedding sudo invocations in the provisioner — the operator has parallel hw-ops workflow that enables linger for all role accounts on all Pis going forward (belt-and-suspenders)."
+    ],
+    "spec_refs": [
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "scope": {
+    "areas": ["remote-provisioning", "systemd", "operator-experience", "reliability"],
+    "paths": [
+      "src/main/remote-provisioner.ts",
+      "specs/src/main/remote-provisioner-spec.md",
+      "tests/main/remote-provisioner.test.ts"
+    ]
+  },
+  "options": [
+    {
+      "id": "A",
+      "label": "Detect at probe-target and fail closed with a specific fix command (chosen)",
+      "chosen": true,
+      "description": "Add one line to the existing probe command that reads `Linger` via `loginctl show-user --value`; parse a 4th line in the probe output; throw a clear error if it is not `yes`. Cost: one extra ssh line, one extra parse, four new test cases. Zero additional privileges required. Fails BEFORE any bytes are uploaded, so an operator running the wrong command sees the exact remediation on the modal instead of an intermittent connection failure a day later."
+    },
+    {
+      "id": "B",
+      "label": "Auto-run `sudo loginctl enable-linger $USER` from the provisioner",
+      "chosen": false,
+      "description": "The provisioner would issue `ssh target sudo loginctl enable-linger \"$USER\"` when Linger != yes. Rejected: requires sudo access over SSH (either passwordless sudo, or interactive password entry in the provisioning modal, both non-trivial), silently escalates our privilege footprint on the target (the operator has explicitly kept the provisioner user-scope only), and offers no meaningful ergonomic win over Option A when the operator already runs one command per Pi during initial hardware provisioning."
+    },
+    {
+      "id": "C",
+      "label": "Install the daemon as a system service instead of a user service",
+      "chosen": false,
+      "description": "Switching to `/etc/systemd/system/switchboard-daemon.service` sidesteps linger entirely because system services run irrespective of user sessions. Rejected: doing this correctly requires the daemon to drop privileges to a dedicated user, own its runtime dir and cert dir under `/var/lib/switchboard`, and be reinstalled via sudo — a much larger change than the failure warrants, and it invalidates our existing per-user cert-dir convention (`~/.switchboard/tls`) plus every already-provisioned host. Would also require a separate DEC to renegotiate the file-layout contract."
+    },
+    {
+      "id": "D",
+      "label": "Document the requirement without enforcing it",
+      "chosen": false,
+      "description": "Add a note to the README / provisioner docs and rely on the operator to remember. Rejected: this is exactly the failure mode we just hit — the operator forgets, the daemon works during provisioning (session alive), then disappears silently. Detect-and-fail-closed converts a silent runtime failure into a loud provision-time failure with a self-service fix. That is worth 10 lines of code."
+    }
+  ],
+  "rationale": "Option A is the smallest change that makes the failure mode impossible to ship. The provisioner already runs a multi-line probe; adding one line and one check keeps everything user-scoped, avoids sudo, and produces a message that names both the affected user and the fix command. The operator's parallel hw-ops rollout (linger enabled for all role accounts on all Pis going forward) means most future provisions will succeed on the first try; this check exists to catch the exceptions — new hardware not yet in the hw-ops pipeline, or a target whose linger got disabled — before they turn into a phantom-crashing daemon.",
+  "risk": {
+    "level": "low",
+    "reversibility": "high",
+    "rollback": "Revert the two-line probe change and drop the linger check plus its four tests. Would only be needed if a target platform surfaces where `loginctl show-user --property=Linger --value` behaves unexpectedly; no known such platform in the current fleet."
+  },
+  "links": {
+    "issues": [],
+    "prs": [],
+    "supersedes": [],
+    "files": [
+      "specs/src/main/remote-provisioner-spec.md"
+    ]
+  },
+  "outcome": {
+    "status": "pending",
+    "verified_by": [],
+    "notes": "Verification will consist of: (1) probe-target succeeds unchanged on a target with Linger=yes; (2) probe-target fails with the expected message text on a fresh Pi where linger is not enabled; (3) after running the suggested `sudo loginctl enable-linger $USER` and retrying, provisioning completes and the daemon persists across `ssh; logout`. Items 1 and 2 are covered by the new unit tests; item 3 requires a fresh Pi that hw-ops has not yet lingered — will be observed opportunistically."
+  },
+  "tags": ["remote-provisioning", "systemd", "linger", "raspberry-pi", "operator-experience", "fail-closed"]
+}
