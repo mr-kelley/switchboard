@@ -68,10 +68,20 @@ jobs:
           # Only the arch-sensitive parts run in the container: rebuild node-pty
           # for the target ABI + assemble the tarball. dist/daemon and the rest
           # of node_modules come from the host install via the volume mount.
+          #
+          # Why we invoke node-pty's install steps directly instead of
+          # `npm rebuild node-pty`: npm 10.x's rebuild re-runs pending install
+          # scripts for every package whose install was skipped by the host's
+          # `--ignore-scripts`, not just the target. That drags electron-
+          # winstaller's postinstall into the emulated container, which does
+          # `copyFileSync('vendor/7z-' + os.arch() + '.exe', 'vendor/7z.exe')`
+          # and crashes on armv7l because no 32-bit-arm 7-Zip binary ships
+          # (only 7z-arm64.exe and 7z-x64.exe are in the vendor dir). Bypassing
+          # npm's tree walk keeps the container step scoped to node-pty alone.
           docker run --rm --platform ${{ matrix.docker_platform }} \
             -v "${{ github.workspace }}:/work" -w /work \
             node:20-bookworm \
-            bash -c "npm rebuild node-pty && ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh"
+            bash -c "cd node_modules/node-pty && (node scripts/prebuild.js || npx node-gyp rebuild) && node scripts/post-install.js && cd /work && ARCH=${{ matrix.arch }} bash scripts/build-daemon-tarball.sh"
 
       - name: Verify tarball
         run: |
