@@ -8,6 +8,8 @@ Part of a series:
 - **This report** — combined workstation (client + local daemon on the same host)
 - [daemon-hardware-comparison.md](daemon-hardware-comparison.md) — daemon in isolation across
   host classes (workstations, servers, SBCs, VMs)
+- [terminal-emulator-comparison.md](terminal-emulator-comparison.md) — Switchboard's client
+  cost vs. other terminal emulators (gnome-terminal, kitty, Terminology, Cool Retro Term)
 
 **TL;DR:** Switchboard's host footprint is small and stable. The daemon costs effectively nothing
 (< 2% of one core even under load, ~130 MB RAM regardless of session count). The client's cost is

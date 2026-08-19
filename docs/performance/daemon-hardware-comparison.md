@@ -2,8 +2,13 @@
 
 Resource-usage measurements of the Switchboard daemon across different host classes
 (workstations, servers, SBCs, VMs). Focuses on the daemon in isolation — the client is driven
-from a separate workstation and its resource use is not measured here (see
-[switchboard-performance.md](switchboard-performance.md) for the combined workstation profile).
+from a separate workstation and its resource use is not measured here.
+
+Part of a series:
+
+- [switchboard-performance.md](switchboard-performance.md) — combined workstation (Switchboard client + local daemon)
+- **This report** — daemon in isolation across host classes
+- [terminal-emulator-comparison.md](terminal-emulator-comparison.md) — Switchboard's client cost vs. other terminal emulators
 
 **Status:** scaffold. Findings will be filled in as fleet data lands. See
 [Reproducing](#reproducing) below to contribute a run from your own host.
