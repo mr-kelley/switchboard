@@ -5,8 +5,11 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run multip
 ## Features
 
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
+- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uploads the matching daemon tarball + an mTLS cert bundle and installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
-- **Session persistence** — sessions restore on app relaunch
+- **Queued prompts** — right-click a session → Queue prompt to stage exactly one follow-up. It fires automatically the next time the session goes to `needs-attention`, so a long-running task hands off cleanly to your next instruction without you having to babysit it. Queue persists across daemon restart.
+- **Session persistence** — sessions restore across both client relaunch AND daemon restart with stable IDs; scrollback replays on reconnect
+- **Persistent local daemon** — install the localhost daemon as a `systemd --user` service (Preferences → Daemons → Install as service) so sessions survive closing the client. Combine with `loginctl enable-linger` for survival across logout / reboot.
 - **System tray** — a tray icon shows the total count of sessions needing attention across all daemons; left-click restores the window and focuses an attention session. Closing the window minimizes to tray (quit from the tray menu or Ctrl+Q)
 - **Notification routing** — set per-session notification priority (right-click a tab → Notifications): High (always alert), Normal (alert when unfocused), Silent (never alert)
 - **Desktop notifications** — OS-level alerts when a background session needs attention
