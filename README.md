@@ -19,7 +19,7 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run multip
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (for building/development). The daemon bundles its own Node runtime, so target hosts don't need Node installed — see [DEC-000009](decisions/events/DEC-000009.json).
 - npm
 - Build tools for native modules: `build-essential`, `python3`
 
@@ -59,7 +59,7 @@ Creates an unpacked Electron app in `release/linux-unpacked/`. Useful for quick 
 npm run dist:appimage
 ```
 
-Output: `release/Switchboard-<version>.AppImage` (~108 MB, runs on any x86_64 Linux with glibc).
+Output: `release/Switchboard-<version>.AppImage` (~205 MB, runs on any x86_64 Linux with glibc). The AppImage bundles the client and three per-arch daemon tarballs (linux-x64, linux-arm64, linux-armv7l) so the "Add remote daemon" flow can provision any supported target without a separate download.
 
 ### Install / run
 
@@ -90,7 +90,7 @@ node-pty is a native module that gets rebuilt against the packaged Electron's No
 
 ## Architecture
 
-Switchboard uses a **daemon-client architecture** (v3 Daemon milestone): PTYs run in a standalone daemon process, and the Electron app is a client that connects to one or more daemons over WebSocket + TLS. This enables remote sessions and session mobility across machines.
+Switchboard uses a **daemon-client architecture**: PTYs run in a standalone daemon process, and the Electron app is a client that connects to one or more daemons over WebSocket + mutual TLS. This enables remote sessions and session mobility across machines.
 
 ```
 src/
@@ -109,8 +109,9 @@ src/
     pty-manager.ts        # PTY lifecycle (spawn, write, resize, close)
     idle-detector.ts      # Three-state machine (working/idle/needs-attention)
     output-buffer.ts      # Scrollback buffer for replay
+    queued-prompts.ts     # Per-session queued prompt (fires on needs-attention)
     session-store.ts      # Session metadata persistence
-    transport.ts, auth.ts, config.ts  # WebSocket+TLS server, token auth, config
+    transport.ts, config.ts           # WebSocket+mTLS server, config
   renderer/               # React frontend (Vite-bundled)
     App.tsx               # Root component, IPC event subscriptions
     state/                # React Context + reducers (sessions, preferences, queued-prompts)
@@ -133,7 +134,8 @@ src/
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - All main/renderer communication goes through validated IPC channels
 - node-pty runs in the **daemon process**, never in the renderer; the renderer has no direct Node.js access
-- Client↔daemon transport is WebSocket over TLS with token authentication; daemon pairing uses a 6-digit code
+- Client↔daemon transport is **mutual TLS** (mTLS): both sides present certificates signed by an operator-issued lab CA and both validate against it. Client identity is drawn from the certificate's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
+- Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from the client's "Add remote daemon" dialog — it uploads a matching cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own certificate for that daemon.
 
 ## Configuration
 
@@ -141,10 +143,14 @@ src/
 
 The idle detector matches shell prompts to determine when a session needs attention. Default pattern: `/^[>$#]\s*$/m`
 
-Override via environment variable:
-```bash
-SWITCHBOARD_PROMPT_PATTERN='^custom-prompt>' switchboard
+Override via the `SWITCHBOARD_PROMPT_PATTERN` environment variable on the **daemon** process (the daemon runs idle detection; the client does not). For a systemd-installed daemon, edit the unit file:
+
 ```
+[Service]
+Environment=SWITCHBOARD_PROMPT_PATTERN=^custom-prompt>
+```
+
+For a client-managed localhost daemon (spawned as a child process), set the env var before launching Switchboard so the child inherits it. See `specs/src/daemon/idle-detector-spec.md` for parsing rules.
 
 ## AI-Assisted Development (Aire)
 
