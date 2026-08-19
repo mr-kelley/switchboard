@@ -1,6 +1,6 @@
 # Switchboard
 
-A Slack-style multi-session terminal manager for AI coding workflows. Run 8+ Claude Code sessions side-by-side with ambient status tracking so you know which sessions need your attention.
+A Slack-style multi-session terminal manager for AI coding workflows. Run multiple AI sessions side-by-side with ambient status tracking so you know which sessions need your attention. See the [performance profile](docs/performance/switchboard-performance.md) for measured session counts and CPU/memory cost.
 
 ## Features
 
