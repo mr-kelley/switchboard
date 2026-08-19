@@ -42,5 +42,5 @@ npm-debug.log*
 # internal repos. My copy stays untracked.
 .handoffs/
 
-# Perf monitor CSVs (see scripts/perf/monitor_cpu_daemon_client_v2.sh)
-switchboard_cpu_v2_*.csv
+# Perf monitor CSVs (see scripts/perf/lib/sample_cpu.sh)
+sample_cpu_*.csv
