@@ -140,6 +140,7 @@ src/
 - Client↔daemon transport is **mutual TLS** (mTLS): every daemon has a **server certificate**; every Switchboard client has its **own client certificate**; both are signed by the same CA and both sides verify against it. Client identity is drawn from the client cert's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
 - **This applies to the local daemon too — there is no "same machine" shortcut.** Running Switchboard against a localhost daemon uses the same mTLS setup as against a remote one. A missing server cert makes the daemon refuse to start; a missing client cert (or one signed by an unknown CA) makes the connection fail. The client surfaces both cases in the daemon status row so you know exactly what's missing.
 - Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from Preferences → Daemons → Add daemon — it uploads the daemon's server cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own client cert for that daemon. For the local daemon, drop `server.crt`, `server.key`, and `ca.crt` (and a matching client cert for the client to present) into `~/.switchboard/tls/` before first launch.
+- **Don't have a lab CA yet?** See [docs/setup/tls.md](docs/setup/tls.md) for a step-by-step guide to bootstrapping a personal CA + your first cert pair with `openssl` — enough to get a local daemon running from a fresh install.
 
 ## Configuration
 
