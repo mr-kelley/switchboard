@@ -8,6 +8,8 @@ Part of a series:
 - **This report** — combined workstation (client + local daemon on the same host)
 - [daemon-hardware-comparison.md](daemon-hardware-comparison.md) — daemon in isolation across
   host classes (workstations, servers, SBCs, VMs)
+- [terminal-emulator-comparison.md](terminal-emulator-comparison.md) — Switchboard's client
+  cost vs. other terminal emulators (gnome-terminal, kitty, Terminology, Cool Retro Term)
 
 **TL;DR:** Switchboard's host footprint is small and stable. The daemon costs effectively nothing
 (< 2% of one core even under load, ~130 MB RAM regardless of session count). The client's cost is
@@ -122,9 +124,12 @@ share is an upper bound that includes any other GPU activity on the desktop at t
 
 ## Reproducing
 
-The measurement driver (`scripts/perf/record_workstation_cpu.sh`, a thin wrapper over
-`scripts/perf/lib/sample_cpu.sh`) samples the daemon and client CPU deltas from
-`/proc/<pid>/stat` and writes them to a CSV.
+The measurement driver (`scripts/perf/run_workstation_combined.sh`) captures host info once,
+then samples daemon-and-client CPU and memory in parallel for the run duration. Output is
+filed automatically under `perf-runs/<YYYY-MM-DD>/<hostname_hash>/workstation-combined/<scenario>/`
+alongside `host.json`, `sample_cpu.csv`, `sample_mem.csv`, and per-sampler logs. This matches
+the layout used by the daemon-only and emulator-comparison drivers so all runs across the
+series file the same way.
 
 **Requirements**
 
@@ -165,31 +170,76 @@ The measurement driver (`scripts/perf/record_workstation_cpu.sh`, a thin wrapper
    removed. If you'd rather change the prompt (e.g. testing a different token count), that's
    fine — just note it alongside your CSV; findings are only comparable across runs of the
    same prompt.
-3. From anywhere convenient, start the monitor. It writes the CSV into the current working
-   directory by default; override with `OUTPUT_DIR=/some/path` if you want it elsewhere.
+3. From the repo checkout, start the driver with a scenario label matching what you're
+   running. Output tree is created under `perf-runs/` by default (`PERF_RUNS_DIR=/some/path`
+   env var overrides).
 
    ```bash
-   ./scripts/perf/record_workstation_cpu.sh <duration_seconds> <interval_seconds>
-   # e.g. 150 seconds at 1 s resolution:
-   ./scripts/perf/record_workstation_cpu.sh 150 1
+   ./scripts/perf/run_workstation_combined.sh --scenario 15sessions_idle --duration 60
+   # active-workload example (see step 2 for the anonymous-Claude recipe):
+   ./scripts/perf/run_workstation_combined.sh --scenario 15sessions_1inference --duration 150
+   # add --with-sudo to capture DIMM detail in host.json
    ```
 
-   Equivalent direct call (what the driver forwards):
-
-   ```bash
-   ./scripts/perf/lib/sample_cpu.sh \
-       --group daemon='switchboard-daemon' \
-       --group client='mount_Switch.*switchboard|Switchboard.*AppImage' \
-       --duration 150 --interval 1
-   ```
+   Scenario names must be `[a-zA-Z0-9_-]+`; they become directory names. Recommended
+   convention: `<N>sessions_<K>inference` (e.g. `15sessions_5inference`) or
+   `<N>sessions_idle`. See [Scenarios](#scenarios) below for the canonical set.
 
 4. Fire the workload (if any) within the first few seconds of the run, so the whole streaming
    window falls inside the sample.
-5. The CSV file path is printed at startup. Columns are `timestamp` plus one
-   `<group>_cpu_percent` per `--group` in the order given, ending with `total_cpu_percent`. For
-   `record_workstation_cpu.sh` that resolves to: `timestamp, daemon_cpu_percent,
-   client_cpu_percent, total_cpu_percent` (percent of one core; values can exceed 100% on
-   multi-core usage).
+5. The output directory is printed on completion. It contains:
+   - `host.json` — CPU / board / memory / storage / GPU / OS / virt / Node version snapshot,
+     captured once at run start
+   - `sample_cpu.csv` — `timestamp, daemon_cpu_percent, client_cpu_percent, total_cpu_percent`
+     per interval (percent of one core; can exceed 100 for multi-threaded groups)
+   - `sample_mem.csv` — `timestamp, daemon_rss_kb, daemon_vms_kb, daemon_threads, daemon_fds,
+     client_rss_kb, client_vms_kb, client_threads, client_fds` per interval
+   - `sample_cpu.log` / `sample_mem.log` — sampler stderr, useful if either sampler misbehaves
+
+### Scenarios
+
+Canonical scenarios for the workstation-combined test. Runs with these names file into
+consistent directories across operators and produce comparable numbers.
+
+| Scenario | Sessions | Active inferences | Duration | Purpose |
+|---|---:|---:|---:|---|
+| `0sessions_idle` | 0 | 0 | 30s | Client-alone floor |
+| `1session_idle` | 1 | 0 | 60s | Single-session baseline |
+| `5sessions_idle` | 5 | 0 | 60s | Session-count scaling |
+| `10sessions_idle` | 10 | 0 | 60s | Session-count scaling |
+| `15sessions_idle` | 15 | 0 | 60s | Session-count scaling |
+| `15sessions_1inference` | 15 | 1 | 150s | Single active inference (Finding 2 replication) |
+| `15sessions_5inference` | 15 | 5 | 180s | Ceiling sweep — 5 parallel inferences |
+| `15sessions_10inference` | 15 | 10 | 240s | Ceiling sweep — 10 parallel inferences |
+| `15sessions_15inference` | 15 | 15 | 300s | Ceiling sweep — every session firing |
+| `1session_realwork` | 1 | — (`npm ci` in one session) | 150s | Non-AI real-work workload |
+
+Extend the sweep past 15 sessions if your hardware and the ceiling signals below permit — the
+scenario name `<N>sessions_<K>inference` is open-ended.
+
+**Parallel-inference ceiling sweep — operator flow**
+
+For `Nsessions_Kinference` with K > 1: in each of K different Switchboard sessions, prepare the
+anonymous-Claude recipe from step 2 pasted in but NOT fired. When `run_workstation_combined.sh`
+prints "Starting CPU + memory samplers...", switch to Switchboard and fire the K prompts
+within a few seconds of each other. Human-triggered sync jitter (~2–3s across K terminals)
+is small relative to the sampling window.
+
+**Ceiling signals**
+
+The sweep is considered "at ceiling" when any of the following holds for ≥10 s of sustained
+sampling:
+
+- **Client saturation:** `client_cpu_percent` divided by (available logical cores × 100)
+  is > 50%. On a 24-core box that's a sustained 1200% (i.e. 12 cores worth).
+- **Daemon saturation:** same threshold applied to `daemon_cpu_percent`. Very unlikely — the
+  daemon is I/O-bound — but worth watching.
+- **Per-inference wall-time regression:** any single K > 1 inference takes > 2× the wall time
+  observed for the same prompt at K = 1. Signals either local (renderer scheduling) or remote
+  (API backend rate-limit) contention.
+- **Hard failure:** OOM, dropped daemon connection, or any prompt erroring out.
+
+These thresholds are guidelines; adjust per host and note the choice alongside your findings.
 
 **Important caveat — PIDs are snapshotted at startup**
 
@@ -202,9 +252,13 @@ refresh the PID list each interval.
 
 **Other things to know**
 
-- Daemon RSS/VMS wasn't measured by this script — those figures came from `ps` snapshots taken
-  in parallel. If you want to reproduce Finding 1 or Finding 3, run something like
-  `while sleep 1; do ps -o pid,rss,vsz,cmd -p $(pgrep -f switchboard-daemon); done` alongside
-  the monitor.
+- The historical Findings 1 and 3 numbers came from a `ps` snapshot loop run in parallel with
+  a CPU-only monitor — the current driver captures RSS/VMS/threads/FDs inline via
+  `sample_mem.sh`, so `sample_mem.csv` is the direct source for those columns in any new run.
 - GPU numbers came from `nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits`
-  sampled at 1 s intervals; those are system-wide, not per-process.
+  sampled at 1 s intervals; those are system-wide, not per-process. Not yet integrated into
+  the driver — if you want GPU alongside CPU/mem, run `nvidia-smi` in a parallel `while` loop
+  writing to `<output-dir>/gpu.csv`.
+- The `perf-runs/` tree is gitignored so real hostnames in `host.json` never reach the repo.
+  Contributors publish findings by pasting sanitized numbers into the report; the raw tree
+  stays on the operator's disk.
