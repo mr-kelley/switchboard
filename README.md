@@ -5,7 +5,7 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run multip
 ## Features
 
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
-- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uploads the matching daemon tarball, a server certificate for the daemon, and a client certificate for Switchboard (both signed by your CA — see the Security model below); it also installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
+- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uses SSH (key-based auth — see [Remote daemons](#remote-daemons) under Configuration for the target-host and workstation requirements) to upload the matching daemon tarball, a server certificate for the daemon, and a client certificate for Switchboard (both signed by your CA — see the Security model below); it also installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
 - **Queued prompts** — right-click a session → Queue prompt to stage exactly one follow-up. It fires automatically the next time the session goes to `needs-attention`, so a long-running task hands off cleanly to your next instruction without you having to babysit it. Queue persists across daemon restart.
 - **Session persistence** — sessions restore across both client relaunch AND daemon restart with stable IDs; scrollback replays on reconnect
@@ -155,6 +155,21 @@ Environment=SWITCHBOARD_PROMPT_PATTERN=^custom-prompt>
 ```
 
 For a client-managed localhost daemon (spawned as a child process), set the env var before launching Switchboard so the child inherits it. See `specs/src/daemon/idle-detector-spec.md` for parsing rules.
+
+### Remote daemons
+
+Adding a remote daemon uses SSH — a one-shot copy-and-install pass from your workstation to the target host. Once the daemon is installed and started, the ongoing session traffic uses the mTLS channel described in the [Security model](#security-model) above; SSH is not held open.
+
+On your workstation (where Switchboard is running):
+
+- Working SSH access to the target: `ssh <user>@<host>` succeeds **without a password prompt** (key-based auth via `~/.ssh/`; agent-forwarded keys work too). The provisioner does not prompt for a password and will fail if one would be required.
+- Any hostname / port / `IdentityFile` / options you already have in `~/.ssh/config` for the target are picked up automatically.
+
+On the target host:
+
+- `systemd --user` available (any modern desktop distro — Ubuntu, Debian, Fedora, Arch, Raspberry Pi OS, etc.).
+- Enough disk under `~/.local/share/switchboard/` for the extracted daemon tarball (~35 MB per arch).
+- Optional but strongly recommended for headless targets (Pi, VM, server): `sudo loginctl enable-linger <user>` so the daemon survives the SSH session ending and reboots.
 
 ## AI-Assisted Development (Aire)
 
