@@ -5,8 +5,11 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run multip
 ## Features
 
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
+- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uses SSH (key-based auth — see [Remote daemons](#remote-daemons) under Configuration for the target-host and workstation requirements) to upload the matching daemon tarball, a server certificate for the daemon, and a client certificate for Switchboard (both signed by your CA — see the Security model below); it also installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
-- **Session persistence** — sessions restore on app relaunch
+- **Queued prompts** — right-click a session → Queue prompt to stage exactly one follow-up. It fires automatically the next time the session goes to `needs-attention`, so a long-running task hands off cleanly to your next instruction without you having to babysit it. Queue persists across daemon restart.
+- **Session persistence** — sessions restore across both client relaunch AND daemon restart with stable IDs; scrollback replays on reconnect
+- **Persistent local daemon** — install the localhost daemon as a `systemd --user` service (Preferences → Daemons → Install as service) so sessions survive closing the client. Combine with `loginctl enable-linger` for survival across logout / reboot.
 - **System tray** — a tray icon shows the total count of sessions needing attention across all daemons; left-click restores the window and focuses an attention session. Closing the window minimizes to tray (quit from the tray menu or Ctrl+Q)
 - **Notification routing** — set per-session notification priority (right-click a tab → Notifications): High (always alert), Normal (alert when unfocused), Silent (never alert)
 - **Desktop notifications** — OS-level alerts when a background session needs attention
@@ -134,8 +137,9 @@ src/
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - All main/renderer communication goes through validated IPC channels
 - node-pty runs in the **daemon process**, never in the renderer; the renderer has no direct Node.js access
-- Client↔daemon transport is **mutual TLS** (mTLS): both sides present certificates signed by an operator-issued lab CA and both validate against it. Client identity is drawn from the certificate's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
-- Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from the client's "Add remote daemon" dialog — it uploads a matching cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own certificate for that daemon.
+- Client↔daemon transport is **mutual TLS** (mTLS): every daemon has a **server certificate**; every Switchboard client has its **own client certificate**; both are signed by the same CA and both sides verify against it. Client identity is drawn from the client cert's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
+- **This applies to the local daemon too — there is no "same machine" shortcut.** Running Switchboard against a localhost daemon uses the same mTLS setup as against a remote one. A missing server cert makes the daemon refuse to start; a missing client cert (or one signed by an unknown CA) makes the connection fail. The client surfaces both cases in the daemon status row so you know exactly what's missing.
+- Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from Preferences → Daemons → Add daemon — it uploads the daemon's server cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own client cert for that daemon. For the local daemon, drop `server.crt`, `server.key`, and `ca.crt` (and a matching client cert for the client to present) into `~/.switchboard/tls/` before first launch.
 
 ## Configuration
 
@@ -151,6 +155,21 @@ Environment=SWITCHBOARD_PROMPT_PATTERN=^custom-prompt>
 ```
 
 For a client-managed localhost daemon (spawned as a child process), set the env var before launching Switchboard so the child inherits it. See `specs/src/daemon/idle-detector-spec.md` for parsing rules.
+
+### Remote daemons
+
+Adding a remote daemon uses SSH — a one-shot copy-and-install pass from your workstation to the target host. Once the daemon is installed and started, the ongoing session traffic uses the mTLS channel described in the [Security model](#security-model) above; SSH is not held open.
+
+On your workstation (where Switchboard is running):
+
+- Working SSH access to the target: `ssh <user>@<host>` succeeds **without a password prompt** (key-based auth via `~/.ssh/`; agent-forwarded keys work too). The provisioner does not prompt for a password and will fail if one would be required.
+- Any hostname / port / `IdentityFile` / options you already have in `~/.ssh/config` for the target are picked up automatically.
+
+On the target host:
+
+- `systemd --user` available (any modern desktop distro — Ubuntu, Debian, Fedora, Arch, Raspberry Pi OS, etc.).
+- Enough disk under `~/.local/share/switchboard/` for the extracted daemon tarball (~35 MB per arch).
+- Optional but strongly recommended for headless targets (Pi, VM, server): `sudo loginctl enable-linger <user>` so the daemon survives the SSH session ending and reboots.
 
 ## AI-Assisted Development (Aire)
 
