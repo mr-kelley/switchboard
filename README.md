@@ -5,7 +5,7 @@ A Slack-style multi-session terminal manager for AI coding workflows. Run multip
 ## Features
 
 - **Multi-session tabs** — spawn and switch between terminal sessions without losing state
-- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uploads the matching daemon tarball + an mTLS cert bundle and installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
+- **Remote daemons** — run sessions on any Linux host (x86_64 / arm64 / armv7l) by adding a daemon from Preferences → Daemons → Add daemon. Provisioning uploads the matching daemon tarball, a server certificate for the daemon, and a client certificate for Switchboard (both signed by your CA — see the Security model below); it also installs the daemon as a `systemd --user` service on the target. Sessions live on that host and stay put across client restarts.
 - **Three-state idle detection** — green (working), yellow (idle 10s), red pulsing (needs attention / prompt detected)
 - **Queued prompts** — right-click a session → Queue prompt to stage exactly one follow-up. It fires automatically the next time the session goes to `needs-attention`, so a long-running task hands off cleanly to your next instruction without you having to babysit it. Queue persists across daemon restart.
 - **Session persistence** — sessions restore across both client relaunch AND daemon restart with stable IDs; scrollback replays on reconnect
@@ -137,8 +137,9 @@ src/
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - All main/renderer communication goes through validated IPC channels
 - node-pty runs in the **daemon process**, never in the renderer; the renderer has no direct Node.js access
-- Client↔daemon transport is **mutual TLS** (mTLS): both sides present certificates signed by an operator-issued lab CA and both validate against it. Client identity is drawn from the certificate's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
-- Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from the client's "Add remote daemon" dialog — it uploads a matching cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own certificate for that daemon.
+- Client↔daemon transport is **mutual TLS** (mTLS): every daemon has a **server certificate**; every Switchboard client has its **own client certificate**; both are signed by the same CA and both sides verify against it. Client identity is drawn from the client cert's SAN FQDN. No pairing codes, no bearer tokens, no insecure fallback — see [DEC-000010](decisions/events/DEC-000010.json).
+- **This applies to the local daemon too — there is no "same machine" shortcut.** Running Switchboard against a localhost daemon uses the same mTLS setup as against a remote one. A missing server cert makes the daemon refuse to start; a missing client cert (or one signed by an unknown CA) makes the connection fail. The client surfaces both cases in the daemon status row so you know exactly what's missing.
+- Certificates and CA trust anchor live under `~/.switchboard/tls/` (`SWITCHBOARD_TLS_DIR` overrides). Provisioning a new host is a one-shot flow from Preferences → Daemons → Add daemon — it uploads the daemon's server cert bundle, installs the daemon as a `systemd --user` service, and hands the client its own client cert for that daemon. For the local daemon, drop `server.crt`, `server.key`, and `ca.crt` (and a matching client cert for the client to present) into `~/.switchboard/tls/` before first launch.
 
 ## Configuration
 
