@@ -116,8 +116,9 @@ share is an upper bound that includes any other GPU activity on the desktop at t
 
 ## Reproducing
 
-The measurement script (`scripts/perf/monitor_cpu_daemon_client_v2.sh`) samples the daemon and
-client CPU deltas from `/proc/<pid>/stat` and writes them to a CSV.
+The measurement driver (`scripts/perf/record_workstation_cpu.sh`, a thin wrapper over
+`scripts/perf/lib/sample_cpu.sh`) samples the daemon and client CPU deltas from
+`/proc/<pid>/stat` and writes them to a CSV.
 
 **Requirements**
 
@@ -135,14 +136,25 @@ client CPU deltas from `/proc/<pid>/stat` and writes them to a CSV.
    directory by default; override with `OUTPUT_DIR=/some/path` if you want it elsewhere.
 
    ```bash
-   ./scripts/perf/monitor_cpu_daemon_client_v2.sh <duration_seconds> <interval_seconds>
+   ./scripts/perf/record_workstation_cpu.sh <duration_seconds> <interval_seconds>
    # e.g. 150 seconds at 1 s resolution:
-   ./scripts/perf/monitor_cpu_daemon_client_v2.sh 150 1
+   ./scripts/perf/record_workstation_cpu.sh 150 1
+   ```
+
+   Equivalent direct call (what the driver forwards):
+
+   ```bash
+   ./scripts/perf/lib/sample_cpu.sh \
+       --group daemon='switchboard-daemon' \
+       --group client='mount_Switch.*switchboard|Switchboard.*AppImage' \
+       --duration 150 --interval 1
    ```
 
 4. Fire the workload (if any) within the first few seconds of the run, so the whole streaming
    window falls inside the sample.
-5. The CSV file path is printed at startup. Columns: `timestamp, daemon_cpu_percent,
+5. The CSV file path is printed at startup. Columns are `timestamp` plus one
+   `<group>_cpu_percent` per `--group` in the order given, ending with `total_cpu_percent`. For
+   `record_workstation_cpu.sh` that resolves to: `timestamp, daemon_cpu_percent,
    client_cpu_percent, total_cpu_percent` (percent of one core; values can exceed 100% on
    multi-core usage).
 
