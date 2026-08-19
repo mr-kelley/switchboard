@@ -136,13 +136,40 @@ series file the same way.
 - Linux with `/proc/<pid>/stat` (any modern distro).
 - `bash`, `awk`, `pgrep`, `getconf` — all part of a default install.
 - Switchboard running from the AppImage (the client PID matcher looks for the AppImage mount).
+- For the active-workload scenario only: the `claude` CLI in `PATH` (Claude Code — see
+  [claude.ai/code](https://claude.ai/code)). Not needed for idle-only runs.
 
 **Steps**
 
 1. Launch Switchboard and open the number of sessions you want to measure. Wait for them to be
    fully connected and idle.
-2. If you're measuring a workload, arrange to trigger it in one session (e.g. queue a prompt in
-   an AI-shell session) but don't fire it yet.
+2. If you're measuring a workload, arrange to trigger it in one session but don't fire it yet.
+   For a fair, reproducible comparison to the numbers in this report and its
+   [companion emulator report](terminal-emulator-comparison.md), use the **canonical prompt**
+   below in an **anonymous Claude session** so nothing lands in your
+   `~/.claude/` history or auto-memory.
+
+   Canonical prompt (bounded output, mixed prose + headers, ~30–45s of streaming on Fable 5):
+
+   > Write a 500-word article about the history of terminal emulators, from teletype machines through modern GPU-accelerated terminals. Structure with 3-4 headers.
+
+   Anonymous-session recipe — run the whole block; it creates a scratch cwd so the CLI has
+   nothing to attach memory to, then wipes both the cwd and the transient Claude project dir
+   on exit:
+
+   ```bash
+   SCRATCH=$(mktemp -d /tmp/sb-perf-run-XXXXXX)
+   cd "$SCRATCH"
+   claude -p "Write a 500-word article about the history of terminal emulators, from teletype machines through modern GPU-accelerated terminals. Structure with 3-4 headers."
+   cd /
+   rm -rf "$SCRATCH"
+   rm -rf "$HOME/.claude/projects/-tmp-sb-perf-run-"*
+   ```
+
+   Your `~/.claude/` auth stays untouched — only the scratch project's transient files are
+   removed. If you'd rather change the prompt (e.g. testing a different token count), that's
+   fine — just note it alongside your CSV; findings are only comparable across runs of the
+   same prompt.
 3. From the repo checkout, start the driver with a scenario label matching what you're
    running. Output tree is created under `perf-runs/` by default (`PERF_RUNS_DIR=/some/path`
    env var overrides).
