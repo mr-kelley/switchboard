@@ -42,5 +42,11 @@ npm-debug.log*
 # internal repos. My copy stays untracked.
 .handoffs/
 
-# Perf monitor CSVs (see scripts/perf/lib/sample_cpu.sh)
+# Perf monitor CSVs (see scripts/perf/lib/sample_{cpu,mem}.sh)
 sample_cpu_*.csv
+sample_mem_*.csv
+
+# Fleet perf-run trees produced by scripts/perf/run_daemon_only.sh — these
+# contain host.json with real hostnames. Contribute individual runs via PR
+# by copying the sanitized bits into a report, not by committing the tree.
+perf-runs/

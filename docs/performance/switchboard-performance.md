@@ -3,6 +3,12 @@
 Resource-usage measurements of Switchboard (Electron client + Node.js daemon) taken on a live
 workstation, covering idle baseline, session-count scaling, and an active AI streaming workload.
 
+Part of a series:
+
+- **This report** — combined workstation (client + local daemon on the same host)
+- [daemon-hardware-comparison.md](daemon-hardware-comparison.md) — daemon in isolation across
+  host classes (workstations, servers, SBCs, VMs)
+
 **TL;DR:** Switchboard's host footprint is small and stable. The daemon costs effectively nothing
 (< 2% of one core even under load, ~130 MB RAM regardless of session count). The client's cost is
 concentrated in UI rendering during output streaming — averaging ~14% of a single core with brief
