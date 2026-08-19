@@ -51,6 +51,7 @@ Features for installing, updating, and monitoring daemons across multiple server
 | Issue | Feature | Description | Side |
 |-------|---------|-------------|------|
 | #47 | Remote daemon provisioning | Client installs and starts a daemon on a remote host over SSH, reads the 6-digit pairing code from the SSH channel, and completes the handshake automatically | Client + remote |
+| TBD | In-app cert init (Sprint 22) | `switchboard cert init` bootstraps a personal CA + client cert + local-daemon server cert so first-launch works without prior PKI setup. Removes the openssl-fluency prerequisite. | Client |
 | TBD | Remote daemon upgrade | Push a newer daemon version to a paired host and restart the service | Client + remote |
 | TBD | Fleet status view | Single pane showing daemon version, health, and session count across all paired hosts | Client |
 | TBD | Connection-details management | Securely store SSH host/user/key references so re-provisioning or re-pairing does not require re-entry | Client |
