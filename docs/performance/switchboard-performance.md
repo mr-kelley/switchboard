@@ -259,6 +259,8 @@ refresh the PID list each interval.
   sampled at 1 s intervals; those are system-wide, not per-process. Not yet integrated into
   the driver — if you want GPU alongside CPU/mem, run `nvidia-smi` in a parallel `while` loop
   writing to `<output-dir>/gpu.csv`.
-- The `perf-runs/` tree is gitignored so real hostnames in `host.json` never reach the repo.
-  Contributors publish findings by pasting sanitized numbers into the report; the raw tree
-  stays on the operator's disk.
+- The `perf-runs/` tree is gitignored so raw runs never reach the repo. `host.json` keeps
+  the operator's real hostname for local bookkeeping (matching a hash back to a recognizable
+  machine); strip it with `scripts/perf/lib/sanitize_host_info.sh` before attaching a
+  `host.json` to a PR or issue. Contributors typically publish findings by pasting sanitized
+  numbers into the report anyway; the raw tree stays on the operator's disk.

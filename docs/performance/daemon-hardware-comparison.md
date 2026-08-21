@@ -129,10 +129,17 @@ You need:
 
 **Contributing a run:**
 
-- Attach the entire per-scenario directory to a PR or issue. It's safe to share — `host.json`
-  contains the real hostname alongside the hash, so redact that field if you don't want it
-  published, or delete `host.json` and paste the relevant CPU/board/memory fields into your PR
-  description instead.
+- Attach the entire per-scenario directory to a PR or issue. `host.json` records your raw
+  hostname (kept there so you can identify old runs from your own fleet), so before sharing
+  it, run:
+
+  ```bash
+  scripts/perf/lib/sanitize_host_info.sh path/to/host.json --output host.public.json
+  ```
+
+  That drops the `hostname` field (leaving `hostname_hash` and everything else intact). Attach
+  `host.public.json` instead — or delete it and paste the CPU/board/memory fields into your PR
+  description by hand.
 
 ## Methodology and caveats
 
@@ -151,5 +158,7 @@ You need:
 - Client resource use is deliberately not measured here. It varies by workstation and is
   covered by the combined-workstation report.
 - Anonymization: `hostname_hash` is SHA-256(hostname) truncated to 16 hex chars. It's stable
-  across runs on the same host (so a host's history stays linkable) but doesn't reveal the real
-  name.
+  across runs on the same host (so a host's history stays linkable) without revealing the real
+  name. `host.json` also records the raw hostname for local bookkeeping (identifying which
+  machine an old run came from); strip it with `scripts/perf/lib/sanitize_host_info.sh` before
+  sharing the file.
