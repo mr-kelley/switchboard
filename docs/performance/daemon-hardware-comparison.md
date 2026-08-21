@@ -100,17 +100,59 @@ Anticipated sections once data lands:
 
 ## Reproducing
 
-You need:
+Two modes: **automated** (recommended) via the workstation-side orchestrator, or **manual**
+if you want fine-grained control over one scenario.
 
-- A running daemon on the target host (`systemctl --user status switchboard-daemon`)
-- A Switchboard client on your workstation configured to reach that daemon
-- `bash`, `awk`, `pgrep`, `getconf` on the target host — all default-installed on any modern
-  Linux distro, present on Raspberry Pi OS
+### Automated — one command per host
 
-**Per scenario:**
+The orchestrator opens N sessions from your workstation over mTLS, kicks off the sampler on
+the target over SSH, and rsyncs the resulting CSVs back into your local `perf-runs/`. Uses
+the shipped workload scripts for target-side execution (Claude CLI is already installed on
+every daemon host in the primary use case).
 
-1. From the workstation client, prepare the number of sessions the scenario calls for (open, wait
-   for them to connect, but don't fire any workload yet).
+Requirements on the **workstation** (where you run the orchestrator):
+
+- Passwordless SSH to each daemon host (`ssh HOST hostname` should just work).
+- Client TLS bundle at `~/.switchboard/tls/`.
+- Node.js in `PATH`, with the switchboard repo cloned and `npm install` completed (the
+  session driver needs the `ws` package).
+
+Requirements on the **target** (each daemon host):
+
+- Running `switchboard-daemon` (`systemctl --user status switchboard-daemon`).
+- `bash`, `awk`, `pgrep`, `getconf`, `hostname`, `sha256sum` — universal on any modern
+  Linux distro.
+- `claude` CLI in `PATH` for the inference scenario, `git` + `npm` for the realwork
+  scenario. Skip those with `--skip 15sessions_1inference,1session_realwork` if a target
+  lacks them (or use `--only-idle` for a lean-host pass).
+
+**Full 7-scenario suite against one host:**
+
+```bash
+./scripts/perf/orchestrate_daemon_fleet.sh --host pi5.example.lan [--with-sudo]
+```
+
+Pushes the perf scripts to `~/.cache/switchboard-perf` on the target, runs each scenario in
+sequence, and pulls results back to `perf-runs/<YYYY-MM-DD>/<hostname_hash>/<scenario>/` on
+your workstation.
+
+**One scenario directly** (useful when re-running a single failure):
+
+```bash
+./scripts/perf/orchestrate_daemon_scenario.sh \
+    --host pi5.example.lan \
+    --scenario 5sessions_idle \
+    --sessions 5 \
+    --duration 60
+```
+
+### Manual — sampler only
+
+Skip the orchestrator and run just the target-side sampler when you want to drive sessions
+from the client UI by hand:
+
+1. From the workstation client, prepare the number of sessions the scenario calls for (open,
+   wait for them to connect, but don't fire any workload yet).
 2. If the scenario includes a workload, queue it in one session but don't press Enter.
 3. SSH to the target host and run:
 
