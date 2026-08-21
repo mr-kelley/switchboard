@@ -6,9 +6,11 @@
 # note appended to the "notes" array — the script never fails, it just
 # emits what it could observe.
 #
-# Anonymization: every emitted record carries `hostname` (real) AND
-# `hostname_hash` (SHA-256 truncated to 16 hex). Reports that get published
-# should reference the hash; the real hostname stays local to the operator.
+# Anonymization: only `hostname_hash` (SHA-256 of hostname, truncated to
+# 16 hex) is emitted — never the raw hostname or any IP address. This is
+# defense-in-depth: an accidentally shared host.json (bug-report attachment,
+# copy-paste into an issue, etc.) carries no host identifier. Operators who
+# need their real hostname can just run `hostname` — no reason to record it.
 #
 # Sudo policy: fields requiring root access (dmidecode-based DIMM info) are
 # collected only when --with-sudo is passed. Otherwise the script skips them
@@ -88,7 +90,9 @@ sysfs_dmi() {
     esac
 }
 
-# --- Hostname + hash ---
+# --- Hostname hash ---
+# The raw hostname is used only to compute the hash and is not written to
+# the output — see the Anonymization note in the file header.
 HN=$(hostname 2>/dev/null || echo "unknown")
 HN_HASH=$(printf '%s' "$HN" | sha256sum 2>/dev/null | awk '{print substr($1, 1, 16)}')
 
@@ -330,7 +334,6 @@ JSON_TMP=$(mktemp)
 {
     printf '{\n'
     printf '  "captured_at": "%s",\n' "$CAPTURED_AT"
-    printf '  "hostname": "%s",\n' "$(json_escape "$HN")"
     printf '  "hostname_hash": "sha256:%s",\n' "$HN_HASH"
     printf '  "os": {\n'
     json_str_field "distro" "$OS_DISTRO";   printf ',\n'

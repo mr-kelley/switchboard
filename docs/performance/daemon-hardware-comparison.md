@@ -130,9 +130,9 @@ You need:
 **Contributing a run:**
 
 - Attach the entire per-scenario directory to a PR or issue. It's safe to share — `host.json`
-  contains the real hostname alongside the hash, so redact that field if you don't want it
-  published, or delete `host.json` and paste the relevant CPU/board/memory fields into your PR
-  description instead.
+  carries only `hostname_hash`, never the raw hostname or any IP address, so no host
+  identifiers ride along. If you'd rather not attach the file, paste the relevant
+  CPU/board/memory fields into your PR description instead.
 
 ## Methodology and caveats
 
