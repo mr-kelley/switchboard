@@ -72,7 +72,7 @@ done
 [[ "$SCENARIO" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "error: --scenario must match [a-zA-Z0-9_-]+ (got: $SCENARIO)" >&2; exit 2; }
 
 # Verify the daemon is running before we bother capturing anything.
-DAEMON_PIDS=$(pgrep -f 'switchboard-daemon' 2>/dev/null || true)
+DAEMON_PIDS=$(pgrep -f 'switchboard-daemon.*daemon\.js' 2>/dev/null || true)
 if [ -z "$DAEMON_PIDS" ]; then
     echo "error: no switchboard-daemon process found on this host" >&2
     echo "start the daemon (systemctl --user start switchboard-daemon) and try again" >&2
@@ -99,14 +99,14 @@ echo "-> Capturing host info..."
 # 2. Launch CPU + memory samplers in parallel.
 echo "-> Starting CPU + memory samplers (${DURATION}s)..."
 "$LIB_DIR/sample_cpu.sh" \
-    --group daemon='switchboard-daemon' \
+    --group daemon='switchboard-daemon.*daemon\.js' \
     --duration "$DURATION" \
     --interval "$INTERVAL" \
     --output "$OUT_DIR/sample_cpu.csv" > "$OUT_DIR/sample_cpu.log" 2>&1 &
 CPU_PID=$!
 
 "$LIB_DIR/sample_mem.sh" \
-    --group daemon='switchboard-daemon' \
+    --group daemon='switchboard-daemon.*daemon\.js' \
     --duration "$DURATION" \
     --interval "$INTERVAL" \
     --output "$OUT_DIR/sample_mem.csv" > "$OUT_DIR/sample_mem.log" 2>&1 &

@@ -30,6 +30,7 @@ set -euo pipefail
 
 HOST=""
 PORT=3717
+TARGET_USER=""
 SCENARIO=""
 SESSIONS=""
 DURATION=""
@@ -41,8 +42,12 @@ REMOTE_SCRATCH='$HOME/.cache/switchboard-perf'
 usage() {
     cat >&2 <<'EOF'
 Usage: orchestrate_daemon_scenario.sh --host HOST --scenario NAME --sessions N --duration SECONDS
-       [--port 3717] [--workload "CMD"] [--workload-delay SECONDS] [--with-sudo]
-       [--remote-scratch PATH]
+       [--port 3717] [--user USER] [--workload "CMD"] [--workload-delay SECONDS]
+       [--with-sudo] [--remote-scratch PATH]
+
+--user USER: SSH in as USER (defaults to current user). Set this to the
+account the daemon runs as — otherwise cross-user /proc reads silently
+return zero for the daemon FDs (Linux mode-0700 fd dir).
 EOF
     exit 2
 }
@@ -51,6 +56,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --host) HOST="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
+        --user) TARGET_USER="$2"; shift 2 ;;
         --scenario) SCENARIO="$2"; shift 2 ;;
         --sessions) SESSIONS="$2"; shift 2 ;;
         --duration) DURATION="$2"; shift 2 ;;
@@ -67,6 +73,10 @@ done
 [ -n "$SCENARIO" ] || { echo "error: --scenario required" >&2; usage; }
 [ -n "$SESSIONS" ] || { echo "error: --sessions required" >&2; usage; }
 [ -n "$DURATION" ] || { echo "error: --duration required" >&2; usage; }
+
+# SSH target with optional user prefix. Info messages keep bare HOST for
+# readability; ssh/scp/rsync use SSH_TARGET.
+SSH_TARGET="${TARGET_USER:+$TARGET_USER@}$HOST"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # SCRIPT_DIR is <repo>/scripts/perf; the repo root is two levels up.
@@ -92,6 +102,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "=== orchestrate: $SCENARIO on $HOST ==="
+echo "SSH target:     $SSH_TARGET"
 echo "Sessions:       $SESSIONS"
 echo "Duration:       ${DURATION}s"
 echo "Workload:       ${WORKLOAD:-<none>}"
@@ -111,19 +122,19 @@ tar czf "$BUNDLE" -C "$REPO_ROOT" \
 # literal filesystem paths (no shell expansion), so `$HOME` and `~` never
 # expand on the remote side. ssh-run commands do get shell expansion —
 # resolve $HOME via a one-shot ssh, then substitute.
-echo "-> Resolving remote scratch path on $HOST ..."
-REMOTE_HOME=$(ssh -o BatchMode=yes "$HOST" 'printf %s "$HOME"')
+echo "-> Resolving remote scratch path on $SSH_TARGET ..."
+REMOTE_HOME=$(ssh -o BatchMode=yes "$SSH_TARGET" 'printf %s "$HOME"')
 if [ -z "$REMOTE_HOME" ]; then
-    echo "error: cannot resolve remote HOME on $HOST" >&2
+    echo "error: cannot resolve remote HOME on $SSH_TARGET" >&2
     exit 1
 fi
 REMOTE_SCRATCH_ABS="${REMOTE_SCRATCH//\$HOME/$REMOTE_HOME}"
 REMOTE_SCRATCH_ABS="${REMOTE_SCRATCH_ABS/#\~/$REMOTE_HOME}"
 
-echo "-> Pushing bundle to $HOST:$REMOTE_SCRATCH_ABS ..."
-ssh -o BatchMode=yes "$HOST" "mkdir -p '$REMOTE_SCRATCH_ABS'"
-scp -q -o BatchMode=yes "$BUNDLE" "$HOST:$REMOTE_SCRATCH_ABS/bundle.tar.gz"
-ssh -o BatchMode=yes "$HOST" "cd '$REMOTE_SCRATCH_ABS' && tar xzf bundle.tar.gz && chmod +x scripts/perf/run_daemon_only.sh scripts/perf/lib/*.sh scripts/perf/workloads/*.sh 2>/dev/null || true"
+echo "-> Pushing bundle to $SSH_TARGET:$REMOTE_SCRATCH_ABS ..."
+ssh -o BatchMode=yes "$SSH_TARGET" "mkdir -p '$REMOTE_SCRATCH_ABS'"
+scp -q -o BatchMode=yes "$BUNDLE" "$SSH_TARGET:$REMOTE_SCRATCH_ABS/bundle.tar.gz"
+ssh -o BatchMode=yes "$SSH_TARGET" "cd '$REMOTE_SCRATCH_ABS' && tar xzf bundle.tar.gz && chmod +x scripts/perf/run_daemon_only.sh scripts/perf/lib/*.sh scripts/perf/workloads/*.sh 2>/dev/null || true"
 
 # --- 2. Start session driver (unless N=0) ---
 if [ "$SESSIONS" -gt 0 ]; then
@@ -164,16 +175,16 @@ else
 fi
 
 # --- 3. Run the sampler on the target (foreground, blocks for $DURATION) ---
-echo "-> Starting sampler on $HOST ..."
+echo "-> Starting sampler on $SSH_TARGET ..."
 REMOTE_CMD="cd '$REMOTE_SCRATCH_ABS' && bash scripts/perf/run_daemon_only.sh --scenario '$SCENARIO' --duration $DURATION $WITH_SUDO"
-ssh -o BatchMode=yes "$HOST" "$REMOTE_CMD"
+ssh -o BatchMode=yes "$SSH_TARGET" "$REMOTE_CMD"
 
 # --- 4. Fetch results back ---
 echo ""
 echo "-> Fetching results ..."
 mkdir -p "$REPO_ROOT/perf-runs"
 # rsync preserves the <date>/<hash>/<scenario>/ tree.
-rsync -a -e "ssh -o BatchMode=yes" "$HOST:$REMOTE_SCRATCH_ABS/perf-runs/" "$REPO_ROOT/perf-runs/"
+rsync -a -e "ssh -o BatchMode=yes" "$SSH_TARGET:$REMOTE_SCRATCH_ABS/perf-runs/" "$REPO_ROOT/perf-runs/"
 
 # --- 5. Report ---
 DATE=$(date +%Y-%m-%d)

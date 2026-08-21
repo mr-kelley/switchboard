@@ -34,6 +34,7 @@ set -euo pipefail
 
 HOST=""
 PORT=3717
+TARGET_USER=""
 WITH_SUDO=""
 SKIP=""
 ONLY_IDLE=0
@@ -45,13 +46,17 @@ WORK_DUR="${PERF_REALWORK_DURATION:-240}"
 
 usage() {
     cat >&2 <<'EOF'
-Usage: orchestrate_daemon_fleet.sh --host HOST [--port 3717] [--with-sudo]
-                                   [--skip NAME[,NAME...]] [--only-idle]
-                                   [--sessions-max N]
+Usage: orchestrate_daemon_fleet.sh --host HOST [--port 3717] [--user USER]
+                                   [--with-sudo] [--skip NAME[,NAME...]]
+                                   [--only-idle] [--sessions-max N]
 
 Runs all 7 daemon-only scenarios against one target host. Sessions are
 opened from this workstation over mTLS; the target only runs the sampler.
 Results rsync back into ./perf-runs/.
+
+--user USER: SSH in as USER (defaults to current user). Set this to the
+account the daemon runs as — otherwise cross-user /proc reads silently
+return zero for the daemon FDs (Linux mode-0700 fd dir).
 EOF
     exit 2
 }
@@ -60,6 +65,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --host) HOST="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
+        --user) TARGET_USER="$2"; shift 2 ;;
         --with-sudo) WITH_SUDO="--with-sudo"; shift ;;
         --skip) SKIP="$2"; shift 2 ;;
         --only-idle) ONLY_IDLE=1; shift ;;
@@ -123,6 +129,7 @@ for entry in "${SCENARIOS[@]}"; do
     echo "############################################"
 
     ARGS=(--host "$HOST" --port "$PORT" --scenario "$name" --sessions "$sessions" --duration "$duration")
+    [ -n "$TARGET_USER" ] && ARGS+=(--user "$TARGET_USER")
     [ -n "$WITH_SUDO" ] && ARGS+=("$WITH_SUDO")
     [ -n "$workload" ] && ARGS+=(--workload "$workload")
 
