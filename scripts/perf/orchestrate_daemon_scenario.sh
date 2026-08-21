@@ -69,7 +69,8 @@ done
 [ -n "$DURATION" ] || { echo "error: --duration required" >&2; usage; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# SCRIPT_DIR is <repo>/scripts/perf; the repo root is two levels up.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 BUNDLE=$(mktemp -u /tmp/sb-perf-bundle-XXXXXX.tar.gz)
 DRIVER_LOG=$(mktemp)
