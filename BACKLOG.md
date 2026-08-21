@@ -28,6 +28,7 @@ Deferred from the original v2 vision. These are client-side features that enhanc
 | #4 | Session templates | Save host + directory + command as a named template for one-click session creation | Client |
 | #5 | Session groups | Organize sessions by host, project, or custom grouping with collapsible sidebar headers | Client |
 | #9 | Notification routing | Per-session notification preferences: high priority, normal, silent | Client |
+| TBD | Spellcheck + autocorrect | Configurable text-input helpers (spellcheck underlines, autocorrect suggestions) exposed in the Preferences tab. Likely surfaces Electron/Chromium's built-in spellcheck plumbing; scoped to prompt/notes input, not PTY output. | Client |
 
 ---
 
