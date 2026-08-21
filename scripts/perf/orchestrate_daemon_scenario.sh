@@ -107,10 +107,23 @@ tar czf "$BUNDLE" -C "$REPO_ROOT" \
     scripts/perf/lib/sample_mem.sh \
     scripts/perf/workloads/
 
-echo "-> Pushing bundle to $HOST:$REMOTE_SCRATCH ..."
-ssh -o BatchMode=yes "$HOST" "mkdir -p $REMOTE_SCRATCH"
-scp -q -o BatchMode=yes "$BUNDLE" "$HOST:$REMOTE_SCRATCH/bundle.tar.gz"
-ssh -o BatchMode=yes "$HOST" "cd $REMOTE_SCRATCH && tar xzf bundle.tar.gz && chmod +x scripts/perf/run_daemon_only.sh scripts/perf/lib/*.sh scripts/perf/workloads/*.sh 2>/dev/null || true"
+# Resolve the remote scratch path once. scp and rsync take remote paths as
+# literal filesystem paths (no shell expansion), so `$HOME` and `~` never
+# expand on the remote side. ssh-run commands do get shell expansion —
+# resolve $HOME via a one-shot ssh, then substitute.
+echo "-> Resolving remote scratch path on $HOST ..."
+REMOTE_HOME=$(ssh -o BatchMode=yes "$HOST" 'printf %s "$HOME"')
+if [ -z "$REMOTE_HOME" ]; then
+    echo "error: cannot resolve remote HOME on $HOST" >&2
+    exit 1
+fi
+REMOTE_SCRATCH_ABS="${REMOTE_SCRATCH//\$HOME/$REMOTE_HOME}"
+REMOTE_SCRATCH_ABS="${REMOTE_SCRATCH_ABS/#\~/$REMOTE_HOME}"
+
+echo "-> Pushing bundle to $HOST:$REMOTE_SCRATCH_ABS ..."
+ssh -o BatchMode=yes "$HOST" "mkdir -p '$REMOTE_SCRATCH_ABS'"
+scp -q -o BatchMode=yes "$BUNDLE" "$HOST:$REMOTE_SCRATCH_ABS/bundle.tar.gz"
+ssh -o BatchMode=yes "$HOST" "cd '$REMOTE_SCRATCH_ABS' && tar xzf bundle.tar.gz && chmod +x scripts/perf/run_daemon_only.sh scripts/perf/lib/*.sh scripts/perf/workloads/*.sh 2>/dev/null || true"
 
 # --- 2. Start session driver (unless N=0) ---
 if [ "$SESSIONS" -gt 0 ]; then
@@ -152,7 +165,7 @@ fi
 
 # --- 3. Run the sampler on the target (foreground, blocks for $DURATION) ---
 echo "-> Starting sampler on $HOST ..."
-REMOTE_CMD="cd $REMOTE_SCRATCH && bash scripts/perf/run_daemon_only.sh --scenario '$SCENARIO' --duration $DURATION $WITH_SUDO"
+REMOTE_CMD="cd '$REMOTE_SCRATCH_ABS' && bash scripts/perf/run_daemon_only.sh --scenario '$SCENARIO' --duration $DURATION $WITH_SUDO"
 ssh -o BatchMode=yes "$HOST" "$REMOTE_CMD"
 
 # --- 4. Fetch results back ---
@@ -160,7 +173,7 @@ echo ""
 echo "-> Fetching results ..."
 mkdir -p "$REPO_ROOT/perf-runs"
 # rsync preserves the <date>/<hash>/<scenario>/ tree.
-rsync -a -e "ssh -o BatchMode=yes" "$HOST:$REMOTE_SCRATCH/perf-runs/" "$REPO_ROOT/perf-runs/"
+rsync -a -e "ssh -o BatchMode=yes" "$HOST:$REMOTE_SCRATCH_ABS/perf-runs/" "$REPO_ROOT/perf-runs/"
 
 # --- 5. Report ---
 DATE=$(date +%Y-%m-%d)
