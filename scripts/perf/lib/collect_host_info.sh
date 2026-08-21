@@ -107,7 +107,15 @@ fi
 VIRT_TYPE="none"
 IS_CONTAINER="false"
 if command -v systemd-detect-virt >/dev/null 2>&1; then
-    VIRT_TYPE=$(systemd-detect-virt 2>/dev/null || echo "none")
+    # systemd-detect-virt exits 1 AND prints "none" when no virt is detected,
+    # so the old `cmd || echo none` pattern captured both outputs and produced
+    # "none\nnone" → JSON escape stripped the newline → "nonenone". Check exit
+    # status separately from output to avoid the concat.
+    if VIRT_OUT=$(systemd-detect-virt 2>/dev/null) && [ -n "$VIRT_OUT" ]; then
+        VIRT_TYPE="$VIRT_OUT"
+    else
+        VIRT_TYPE="none"
+    fi
     if systemd-detect-virt --container >/dev/null 2>&1; then
         IS_CONTAINER="true"
     fi
